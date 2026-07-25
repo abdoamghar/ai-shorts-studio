@@ -9,6 +9,7 @@ import {
   FilmIcon,
   Loader2Icon,
   RotateCcwIcon,
+  Trash2Icon,
   XCircleIcon,
 } from "lucide-react";
 
@@ -94,13 +95,20 @@ const STATUS_META: Record<
   cancelled: { label: "Cancelled", variant: "secondary", icon: <BanIcon className="size-3.5" /> },
 };
 
-export function JobCard({ job }: { job: JobListEntry }) {
+export function JobCard({
+  job,
+  onDeleted,
+}: {
+  job: JobListEntry;
+  onDeleted?: (jobId: string) => void;
+}) {
   const [status, setStatus] = React.useState<JobListEntry["status"]>(job.status);
   const [progress, setProgress] = React.useState<number>(job.progress);
   const [step, setStep] = React.useState<string | null>(job.step);
   const [message, setMessage] = React.useState<string | null>(job.message);
   const [logs, setLogs] = React.useState<LogLine[]>([]);
   const [retrying, setRetrying] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const logEndRef = React.useRef<HTMLDivElement | null>(null);
 
   const applyEvent = React.useCallback((evt: StreamEvent) => {
@@ -175,6 +183,24 @@ export function JobCard({ job }: { job: JobListEntry }) {
     }
   }
 
+  async function onDelete() {
+    if (!confirm("Remove this job from the queue? The project and its files are kept.")) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Delete failed.");
+      }
+      toast.success("Job removed.");
+      onDeleted?.(job.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const meta = STATUS_META[status];
   const terminal =
     status === "succeeded" || status === "failed" || status === "cancelled";
@@ -239,6 +265,16 @@ export function JobCard({ job }: { job: JobListEntry }) {
               Retry
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onDelete}
+            disabled={deleting}
+            aria-label="Remove job from queue"
+            className="text-muted-foreground hover:text-destructive"
+          >
+            {deleting ? <Loader2Icon className="size-3.5 animate-spin" /> : <Trash2Icon className="size-3.5" />}
+          </Button>
         </div>
       </div>
 

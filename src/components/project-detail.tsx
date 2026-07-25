@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   ArrowLeftIcon,
   CaptionsIcon,
@@ -12,10 +14,12 @@ import {
   ListChecksIcon,
   Loader2Icon,
   ScissorsIcon,
+  Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -108,13 +112,37 @@ export function ProjectDetail({
   project: ProjectDetail;
   latestJob: LatestJob;
 }) {
+  const router = useRouter();
   const [job, setJob] = React.useState<LatestJob>(latestJob);
   const [activeTab, setActiveTab] = React.useState("transcript");
   const [segments, setSegments] = React.useState<Segment[]>([]);
   const [loadingTranscript, setLoadingTranscript] = React.useState(false);
   const [clips, setClips] = React.useState<ClipCardData[]>([]);
   const [loadingClips, setLoadingClips] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  async function onDelete() {
+    if (
+      !confirm(
+        `Delete project "${project.title ?? "Untitled video"}"? This removes all clips, renders, and stored files permanently.`,
+      )
+    )
+      return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Delete failed.");
+      }
+      toast.success("Project deleted.");
+      router.push("/projects");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed.");
+      setDeleting(false);
+    }
+  }
 
   const applyJobEvent = React.useCallback((evt: SseEvent) => {
     setJob((prev) => {
@@ -263,7 +291,19 @@ export function ProjectDetail({
             {project.durationSec ? ` · ${fmtTime(project.durationSec * 1000)}` : ""}
           </p>
         </div>
-        <Badge variant="outline">{STATUS_LABEL[project.status] ?? project.status}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{STATUS_LABEL[project.status] ?? project.status}</Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onDelete}
+            disabled={deleting}
+            aria-label="Delete project"
+            className="text-muted-foreground hover:text-destructive"
+          >
+            {deleting ? <Loader2Icon className="size-4 animate-spin" /> : <Trash2Icon className="size-4" />}
+          </Button>
+        </div>
       </header>
 
       {/* Job status line */}

@@ -54,6 +54,10 @@ export default function QueuePage() {
   const active = jobs.filter((j) => j.status === "queued" || j.status === "running");
   const done = jobs.filter((j) => j.status !== "queued" && j.status !== "running");
 
+  function handleDeleted(jobId: string) {
+    setJobs((prev) => prev.filter((j) => j.id !== jobId));
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -128,7 +132,7 @@ export default function QueuePage() {
               </h2>
               <div className="space-y-3">
                 {active.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <JobCard key={job.id} job={job} onDeleted={handleDeleted} />
                 ))}
               </div>
             </section>
@@ -141,7 +145,7 @@ export default function QueuePage() {
               </h2>
               <div className="space-y-3">
                 {done.map((job) => (
-                  <JobCard key={job.id} job={job} />
+                  <JobCard key={job.id} job={job} onDeleted={handleDeleted} />
                 ))}
               </div>
             </section>

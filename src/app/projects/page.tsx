@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { FolderIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
+import { toast } from "sonner";
+import { FolderIcon, Loader2Icon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,30 @@ export default function ProjectsPage() {
   const [projects, setProjects] = React.useState<RecentProject[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [query, setQuery] = React.useState("");
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  async function deleteProject(p: RecentProject) {
+    if (
+      !confirm(
+        `Delete project "${p.title ?? "Untitled video"}"? This removes all clips, renders, and stored files permanently.`,
+      )
+    )
+      return;
+    setDeletingId(p.id);
+    try {
+      const res = await fetch(`/api/projects/${p.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Delete failed.");
+      }
+      toast.success("Project deleted.");
+      setProjects((prev) => prev.filter((x) => x.id !== p.id));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -138,33 +163,55 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((p) => (
-            <Link key={p.id} href={`/projects/${p.id}`} className="group">
-              <Card className="h-full overflow-hidden p-0 transition-colors group-hover:border-primary/50">
-                <div className="relative aspect-video w-full bg-muted">
-                  {p.thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.thumbnailUrl} alt="" className="size-full object-cover" />
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <FolderIcon className="size-6 text-muted-foreground" />
-                    </div>
-                  )}
-                </div>
-                <CardContent className="space-y-1 p-3">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {p.title ?? "Untitled video"}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="outline">{STATUS_LABEL[p.status] ?? p.status}</Badge>
-                    {p.durationSec ? <span>{fmtDuration(p.durationSec)}</span> : null}
-                    {p.clipCount > 0 ? <span>· {p.clipCount} clips</span> : null}
+            <div key={p.id} className="group relative">
+              <Link href={`/projects/${p.id}`} className="block h-full">
+                <Card className="h-full overflow-hidden p-0 transition-colors group-hover:border-primary/50">
+                  <div className="relative aspect-video w-full bg-muted">
+                    {p.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.thumbnailUrl} alt="" className="size-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <FolderIcon className="size-6 text-muted-foreground" />
+                      </div>
+                    )}
                   </div>
-                  {p.channel ? (
-                    <p className="truncate text-xs text-muted-foreground">{p.channel}</p>
-                  ) : null}
-                </CardContent>
-              </Card>
-            </Link>
+                  <CardContent className="space-y-1 p-3">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {p.title ?? "Untitled video"}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline">{STATUS_LABEL[p.status] ?? p.status}</Badge>
+                      {p.durationSec ? <span>{fmtDuration(p.durationSec)}</span> : null}
+                      {p.clipCount > 0 ? <span>· {p.clipCount} clips</span> : null}
+                    </div>
+                    {p.channel ? (
+                      <p className="truncate text-xs text-muted-foreground">{p.channel}</p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </Link>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void deleteProject(p);
+                }}
+                disabled={deletingId === p.id}
+                aria-label="Delete project"
+                className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                title="Delete project"
+              >
+                {deletingId === p.id ? (
+                  <Loader2Icon className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2Icon className="size-3.5" />
+                )}
+              </Button>
+            </div>
           ))}
         </div>
       )}
