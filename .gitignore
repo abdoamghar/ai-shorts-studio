@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# AI Shorts Studio runtime data
+/storage/
+/whisper-models/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+

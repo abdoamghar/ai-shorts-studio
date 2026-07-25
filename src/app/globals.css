@@ -1,26 +1,178 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  --font-mono: var(--font-mono, ui-monospace, monospace);
+  --font-heading: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ---------------------------------------------------------------------------
+   Layer 1: primitives (raw OKLCH, not consumed directly by components)
+   --------------------------------------------------------------------------- */
+:root {
+  /* charcoal indigo surface ramp (low → high) */
+  --ink-050: oklch(0.16 0.02 264);
+  --ink-100: oklch(0.20 0.025 264);
+  --ink-150: oklch(0.24 0.03 264);
+  --ink-200: oklch(0.29 0.035 264);
+  --ink-250: oklch(0.34 0.04 264);
+  --ink-300: oklch(0.45 0.04 264);
+  --ink-400: oklch(0.65 0.03 264);
+  --ink-500: oklch(0.88 0.01 264);
+  --ink-600: oklch(0.985 0.001 264);
+  /* electric violet accents */
+  --violet-400: oklch(0.55 0.22 282);
+  --violet-500: oklch(0.62 0.24 282);
+  --violet-600: oklch(0.70 0.22 282);
+  /* amber accent */
+  --amber-400: oklch(0.78 0.16 75);
+  --amber-500: oklch(0.82 0.17 80);
+  /* coral destructive */
+  --coral-400: oklch(0.62 0.21 22);
+  --coral-500: oklch(0.68 0.20 22);
+  /* emerald success */
+  --emerald-500: oklch(0.72 0.16 160);
+  /* chart palette */
+  --chart-violet:  oklch(0.62 0.24 282);
+  --chart-amber:   oklch(0.82 0.17 80);
+  --chart-emerald: oklch(0.72 0.16 160);
+  --chart-coral:   oklch(0.68 0.20 22);
+  --chart-indigo:  oklch(0.58 0.18 255);
+  --radius-base: 0.625rem;
+
+  /* Layer 2: semantic — light theme (structured for future use, not shipped) */
+  --background: oklch(0.99 0.005 264);
+  --foreground: var(--ink-050);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--ink-050);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--ink-050);
+  --primary: var(--violet-500);
+  --primary-foreground: oklch(0.985 0.002 264);
+  --secondary: oklch(0.95 0.01 264);
+  --secondary-foreground: var(--ink-050);
+  --muted: oklch(0.95 0.01 264);
+  --muted-foreground: var(--ink-300);
+  --accent: var(--amber-500);
+  --accent-foreground: oklch(0.18 0.03 264);
+  --destructive: var(--coral-500);
+  --destructive-foreground: oklch(0.985 0.002 264);
+  --border: oklch(0.90 0.01 264);
+  --input: oklch(0.90 0.01 264);
+  --ring: var(--violet-600);
+  --success: var(--emerald-500);
+  --chart-1: var(--chart-violet);
+  --chart-2: var(--chart-amber);
+  --chart-3: var(--chart-emerald);
+  --chart-4: var(--chart-coral);
+  --chart-5: var(--chart-indigo);
+  --radius: var(--radius-base);
+  --sidebar: oklch(0.97 0.01 264);
+  --sidebar-foreground: var(--ink-150);
+  --sidebar-primary: var(--violet-500);
+  --sidebar-primary-foreground: oklch(0.985 0.002 264);
+  --sidebar-accent: oklch(0.93 0.01 264);
+  --sidebar-accent-foreground: var(--ink-050);
+  --sidebar-border: oklch(0.90 0.01 264);
+  --sidebar-ring: var(--violet-600);
+}
+
+/* ---------------------------------------------------------------------------
+   Layer 2: semantic — dark theme (the shipped default)
+   --------------------------------------------------------------------------- */
+.dark {
+  --background: var(--ink-050);
+  --foreground: var(--ink-500);
+  --card: var(--ink-100);
+  --card-foreground: var(--ink-500);
+  --popover: var(--ink-150);
+  --popover-foreground: var(--ink-500);
+  --primary: var(--violet-500);
+  --primary-foreground: oklch(0.985 0.002 264);
+  --secondary: var(--ink-200);
+  --secondary-foreground: var(--ink-500);
+  --muted: var(--ink-150);
+  --muted-foreground: var(--ink-300);
+  --accent: var(--amber-500);
+  --accent-foreground: oklch(0.18 0.03 264);
+  --destructive: var(--coral-500);
+  --destructive-foreground: oklch(0.985 0.002 264);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: var(--violet-600);
+  --success: var(--emerald-500);
+  --chart-1: var(--chart-violet);
+  --chart-2: var(--chart-amber);
+  --chart-3: var(--chart-emerald);
+  --chart-4: var(--chart-coral);
+  --chart-5: var(--chart-indigo);
+  --radius: var(--radius-base);
+  --sidebar: var(--ink-100);
+  --sidebar-foreground: var(--ink-400);
+  --sidebar-primary: var(--violet-500);
+  --sidebar-primary-foreground: oklch(0.985 0.002 264);
+  --sidebar-accent: var(--ink-200);
+  --sidebar-accent-foreground: var(--ink-500);
+  --sidebar-border: oklch(1 0 0 / 6%);
+  --sidebar-ring: var(--violet-600);
+}
+
+/* ---------------------------------------------------------------------------
+   Layer 3 / base styles
+   --------------------------------------------------------------------------- */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 }
