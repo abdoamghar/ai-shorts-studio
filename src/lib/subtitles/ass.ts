@@ -10,19 +10,31 @@ import type { StyleJson } from "@/lib/subtitles/themes";
  *   1. Lay the words out (`layoutBlock`): measure, greedy-wrap to the safe
  *      band, balance breaks, cap at ≤3 lines, anchor the block's center at
  *      `anchorY * videoH` (lower-middle, ~65% — clear of TikTok UI).
- *   2. Emit the karaoke text line on layer 1 (centered, \\N between visual
- *      lines) with the classic per-word \\k timing. Per spec the highlighted
- *      word's text stays white and the box (layer 0) carries the accent color.
- *   3. Emit a rounded-box highlight for the active word on layer 0, drawn with
- *      ASS vector commands (`\\p1`), sized to the measured word width + padding,
- *      positioned with `\\pos` so it hugs the word exactly. This is the
- *      Vozo/Captions signature look; libass has no native rounded box so we
- *      draw the rounded rectangle ourselves.
+ *   2. Emit EVERY word as its own Dialogue event, on BOTH layers, each timed to
+ *      the word's CLIP-RELATIVE [startMs, endMs] window:
+ *        - Layer 1: the word's TEXT, positioned with `\an5\pos` at the word's
+ *          measured center (cx, cy) — `\an5` centers the glyph box on `\pos`.
+ *        - Layer 0: a rounded-box highlight for that word, drawn with ASS
+ *          vector commands (`\p1`) in top-left-origin coords (0..boxW,
+ *          0..boxH), positioned with `\an7\pos` at the box's screen-space
+ *          top-left corner `(cx - boxW/2, cy - boxH/2)`. Under `\an7` the
+ *          drawing origin `(0,0)` lands exactly at `\pos` (no ascent-offset),
+ *          so the box is centered on the SAME (cx, cy) as the text. libass has
+ *          no native rounded box so we draw it ourselves. (`\an5` would
+ *          shift a centered drawing up by ~half the line height — verified.)
  *
- * The box follows the karaoke: at any playback time the box sits under whatever
- * word's window is currently active (the word being spoken), giving the
- * per-word pop highlight. Times are CLIP-RELATIVE (0-based) so the burn-in
- * filter and the trimmed source share a timeline.
+ * Because the text (`\an5` at (cx,cy)) and the box (`\an7` top-left derived
+ * from the same (cx,cy)) both target the word's measured center, the box always
+ * lands under the word regardless of the font's ascent/descent metrics (we
+ * never rely on libass's `\N` line-stacking whose baseline math we can't
+ * replicate in JS). And because both layers are timed to the word's ABSOLUTE
+ * window, the highlight is always synced to the spoken word — there is no
+ * cumulative-`\k` drift when Whisper word timings have gaps. This is the
+ * per-event positioning approach libass maintainers recommend (issue #625).
+ * The active-word cue comes from the box being on screen exactly while its word
+ * is spoken; for `animationStyle: "pop"` the word scales in (150->100% via
+ * `\t`) and the box fades in (`\fad`) in step. Times are CLIP-RELATIVE (0-based)
+ * so the burn-in filter and the trimmed source share a timeline.
  */
 
 export type AssWord = {
@@ -88,9 +100,18 @@ function esc(text: string): string {
 }
 
 /**
- * Build a rounded-rectangle ASS vector drawing centered at the drawing origin
- * (0,0), spanning [-w/2, -h/2] .. [w/2, h/2], with corner radius `r` (clamped
- * to half the smaller dimension). Returns the `{\p1}...{\p}` drawing string.
+ * Build a rounded-rectangle ASS vector drawing in TOP-LEFT-origin coordinates:
+ * the path spans `(0,0) .. (w, h)` (positive x/y, origin at the top-left
+ * corner), with corner radius `r` (clamped to half the smaller dimension).
+ * Returns the `{\p1}...{\p}` drawing string.
+ *
+ * The box is emitted on a Layer-0 Dialogue that uses `\an7` (top-left anchor)
+ * with `\pos` set to the box's screen-space top-left corner. Under `\an7` the
+ * drawing origin `(0,0)` coincides with the `\pos` point — there is NO
+ * ascent-offset the way `\an5` shifts a centered drawing up by ~half the line
+ * height (empirically verified: a `\p1` box at `\an5\pos(540,1226)` centered
+ * at origin rendered ~50px above the `\pos` y). `\an7` + top-left `\pos` makes
+ * the box land exactly behind the word, vertically centered on its text.
  *
  * libass vector drawing uses `m`/`l` path commands in script-resolution units
  * relative to the event's `\pos`. libass has no native arc, so each corner is
@@ -100,14 +121,12 @@ function esc(text: string): string {
  * libass fills cleanly with the default even-odd-free winding.
  */
 function roundedRectDrawing(w: number, h: number, radius: number): string {
-  const hw = w / 2;
-  const hh = h / 2;
-  const r = Math.max(0, Math.min(radius, Math.min(hw, hh)));
+  const r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
   const N = 6; // segments per corner arc
   const rnd = (n: number) => Math.round(n).toString();
 
-  // Points on a corner arcade: the quarter-arc from angle a0 to a1 (degrees,
-  // measured CCW from +x) about center (cx, cy) with radius r.
+  // Quarter-arc from angle a0 to a1 (degrees, CCW from +x) about center
+  // (cx, cy) with radius r, as N `l` segments.
   const arc = (cx: number, cy: number, a0: number, a1: number): string => {
     let s = "";
     for (let i = 1; i <= N; i++) {
@@ -117,10 +136,10 @@ function roundedRectDrawing(w: number, h: number, radius: number): string {
     return s;
   };
 
-  // Clockwise outline: top edge -> TR arc (270°->360°) -> right edge ->
-  // BR arc (0°->90°) -> bottom edge -> BL arc (90°->180°) -> left edge ->
-  // TL arc (180°->270°) -> close. Top edge starts at the end of the TL arc
-  // so we begin the `m` there.
+  // Clockwise outline in top-left-origin coords: top edge -> TR arc
+  // (270°->360°) -> right edge -> BR arc (0°->90°) -> bottom edge ->
+  // BL arc (90°->180°) -> left edge -> TL arc (180°->270°) -> close.
+  // We start the `m` at the end of the TL arc (top edge's left end).
   //
   // NOTE: the tags MUST be emitted as literal `\p1` and `\p` on disk for
   // libass to enter/leave vector-drawing mode. In a JS template literal a
@@ -128,15 +147,15 @@ function roundedRectDrawing(w: number, h: number, radius: number): string {
   // (yielding `{p1}`), which libass then renders as literal text — the
   // drawing path digits appear on screen. Use `\\p` so the runtime string
   // keeps the single backslash libass requires.
-  let path = `m ${rnd(-hw + r)} ${rnd(-hh)}`;
-  path += ` l ${rnd(hw - r)} ${rnd(-hh)}`; // top edge
-  path += arc(hw - r, -hh + r, 270, 360); // TR
-  path += ` l ${rnd(hw)} ${rnd(hh - r)}`; // right edge
-  path += arc(hw - r, hh - r, 0, 90); // BR
-  path += ` l ${rnd(-hw + r)} ${rnd(hh)}`; // bottom edge
-  path += arc(-hw + r, hh - r, 90, 180); // BL
-  path += ` l ${rnd(-hw)} ${rnd(-hh + r)}`; // left edge
-  path += arc(-hw + r, -hh + r, 180, 270); // TL
+  let path = `m ${rnd(r)} 0`;
+  path += ` l ${rnd(w - r)} 0`; // top edge
+  path += arc(w - r, r, 270, 360); // TR
+  path += ` l ${rnd(w)} ${rnd(h - r)}`; // right edge
+  path += arc(w - r, h - r, 0, 90); // BR
+  path += ` l ${rnd(r)} ${rnd(h)}`; // bottom edge
+  path += arc(r, h - r, 90, 180); // BL
+  path += ` l 0 ${rnd(r)}`; // left edge
+  path += arc(r, r, 180, 270); // TL
   return `{\\p1}${path}{\\p}`;
 }
 
@@ -170,11 +189,13 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
   // Compute each line's laid-out block geometry (lines + per-word offsets).
   const laid: LaidBlock[] = lines.map((ln) => layoutBlock(ln.words, style, videoW, videoH));
 
-  // Default style: bottom-center (alignment 2); per-line events override
-  // MarginV so every block's CENTER sits at anchorY regardless of line count.
-  // WrapStyle 2 = no auto-wrap (we control breaks via \\N). BorderStyle 1 =
-  // outline + shadow. The Highlight style is used for the box drawing layer;
-  // its alignment is center (5) and per-event \\pos places each box.
+  // Styles: every per-word Dialogue overrides both alignment (\an5 = center)
+  // and position (\pos) per-event, so the Default style's alignment/margins
+  // are largely inert — we keep alignment 2 + a nominal MarginV only as a
+  // sane fallback if a renderer ever ignores per-event tags. WrapStyle 2 =
+  // no auto-wrap (breaks are explicit: one event per word, no \N). BorderStyle
+  // 1 = outline + shadow. The Highlight style drives the box drawing layer;
+  // its alignment is center (5) and per-event \pos places each box.
   const header = [
     "[Script Info]",
     "; Generated by AI Shorts Studio",
@@ -195,62 +216,39 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
 
   const body: string[] = [];
   for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
     const block = laid[li];
 
-    // MarginV override positions this block at its anchor (block.marginV already
-    // accounts for line count so the block's CENTER sits at anchorY).
-    const marginV = block.marginV;
-
-    // --- Layer 1: the karaoke text line (centered, hard-broken with \\N). ---
-    const parts: string[] = [];
-    for (let li2 = 0; li2 < block.lines.length; li2++) {
-      const visual = block.lines[li2];
-      for (let wi = 0; wi < visual.words.length; wi++) {
-        const w = visual.words[wi];
-        const durCs = Math.max(1, Math.round((w.endMs - w.startMs) / 10));
-        const word = esc(w.text);
-        const trail = wi < visual.words.length - 1 ? " " : "";
-        // All text stays primary (white); the box on layer 0 carries the color.
-        // For `pop`: animate THIS syllable's scale from 150% to 100% over popMs.
-        // The `\t` transform is scoped to the syllable it precedes (libass
-        // karaoke semantics), so each word independently pops in as it's spoken.
-        const anim = usePop
-          ? `\\t(0,${popMs},\\fscx150\\fscy150\\fscx100\\fscy100)`
-          : "";
-        parts.push(`{\\k${durCs}${anim}}${word}${trail}`);
-      }
-      if (li2 < block.lines.length - 1) parts.push("\\N");
-    }
-    body.push(
-      `Dialogue: 1,${formatAssTime(line.startMs)},${formatAssTime(line.endMs)},Default,,0,0,${marginV},,${parts.join("")}`,
-    );
-
-    // --- Layer 0: rounded-box highlight for the currently-spoken word. ---
-    // One box Dialogue per word, each timed to that word's [startMs, endMs]
-    // and positioned with \\pos at the word's measured center. Only one box
-    // is on-screen at a time (the active word) — the per-word pop.
+    // Per-word emit. Both the text (layer 1) and the highlight box (layer 0)
+    // are emitted as ONE Dialogue per word, each timed to that word's CLIP-
+    // RELATIVE [startMs, endMs] and positioned with \an5\pos at the word's
+    // measured center (cx, cy). Because the text and the box for a word share
+    // the SAME \pos, the box is guaranteed to sit under the word regardless
+    // of the font's ascent/descent metrics — we no longer rely on libass's
+    // \N line-stacking (whose baseline math we can't replicate in JS).
+    //
+    // Timing is also shared and ABSOLUTE per word on both layers, so there is no
+    // cumulative-\k drift: when Whisper word timings have gaps/overlaps, the
+    // box and the (now per-word) text both appear at that word's exact window.
+    // This is the approach libass maintainers recommend for per-line positioning
+    // (issue #625) and it doubles as the fix for both observed bugs (box not
+    // under text; box not synced to speech).
     for (let li2 = 0; li2 < block.lines.length; li2++) {
       const visual = block.lines[li2];
       // Screen x of this visual line's LEFT edge (block is centered as a unit;
       // each visual line is centered within the block width). For degenerate
-      // over-wide blocks (a line wider than the safe band, e.g. one very long
-      // word wrapped onto a filled last line under a tight maxLines), clamp
-      // the line into the safe band so no box renders off-screen — a long line
+      // over-wide blocks (a line wider than the safe band), clamp the line into
+      // the safe band so no word/box renders off-screen — a long line
       // left-aligns at the safe margin rather than centering off-screen.
-      const marginH = Math.round(videoW * (style.safeMarginPct ?? 0.09));
       const safeRight = videoW - marginH;
       const centered = videoW / 2 - block.blockWidthPx / 2 + (block.blockWidthPx - visual.widthPx) / 2;
-      // Clamp the centered left-edge into the safe band [marginH, safeRight-width].
-      // When the line is wider than the band the interval collapses; Math.max
-      // with marginH pins it to the left safe margin (right edge bleeds, never
-      // the left, and the block still reads as left-justified rather than
-      // centered off-screen).
       const lineLeftX = Math.max(marginH, Math.min(safeRight - visual.widthPx, centered));
-      // Screen y of this visual line's CENTER:
-      //   marginV is from the bottom -> block bottom = videoH - marginV
-      //   block center = block bottom - blockHeight/2
-      //   line k = blockCenter - (numLines - 1)/2 * lineHeight + k * lineHeight
+      // Screen y of this visual line's CENTER, derived directly from the
+      // anchor (not from libass's \N stacking): block center sits at
+      // anchorY*videoH (+ legacy marginV nudge via block.marginV), and the k
+      // visual lines stack lineHeightPx apart around it. Since BOTH the text
+      // and box events for this line use this cy with \an5, they coincide by
+      // construction; the value just needs to be visually centered, which the
+      // existing anchor math provides.
       const blockCenterY = videoH - block.marginV - block.blockHeightPx / 2;
       const lineCenterY =
         blockCenterY - ((block.lines.length - 1) * lineHeightPx) / 2 + li2 * lineHeightPx;
@@ -259,24 +257,46 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
         const w = visual.words[wi];
         const wordW = visual.wordWidths[wi];
         const wordOffset = visual.wordOffsets[wi];
+        const cx = lineLeftX + wordOffset + wordW / 2;
+        const cy = lineCenterY;
+        const start = formatAssTime(w.startMs);
+        const end = formatAssTime(w.endMs);
+        // Layer 1: the word's text, centered at (cx, cy), on screen only while
+        // spoken. No \k (each event IS exactly one word) and no \N (each visual
+        // line is its own row of per-word events). For `pop`, scale the word in
+        // 150%->100% over popMs. Outline/shadow come from the Default style.
+        const wordAnim = usePop
+          ? `\\t(0,${popMs},\\fscx150\\fscy150\\fscx100\\fscy100)`
+          : "";
+        const textText = `{\\pos(${Math.round(cx)},${Math.round(cy)})\\an5${wordAnim}}${esc(w.text)}`;
+        body.push(`Dialogue: 1,${start},${end},Default,,0,0,0,,${textText}`);
+
+        // Layer 0: the rounded highlight box for THIS word, centered on the
+        // SAME (cx, cy) as the text so it sits directly behind it. Box sized
+        // to the measured word width + padding. The drawing path uses
+        // TOP-LEFT-origin coords (0..boxW, 0..boxH) and the Dialogue uses
+        // \an7\pos at the box's screen top-left corner — under \an7 the
+        // drawing origin lands exactly at \pos (no ascent-offset like \an5),
+        // so the box is vertically centered on the text. Outline/shadow
+        // disabled so only the fill shows. For `pop`, fade the box in over
+        // popMs alongside the word's scale.
         const padX = style.highlightPaddingX ?? 12;
         const padY = style.highlightPaddingY ?? 6;
         const radius = style.highlightRadius ?? 16;
         const boxW = wordW + padX * 2;
         const boxH = style.fontSize + padY * 2;
-        const cx = lineLeftX + wordOffset + wordW / 2;
-        const cy = lineCenterY;
         const drawing = roundedRectDrawing(boxW, boxH, radius);
-        // an5 = center align; \pos places box center at (cx, cy); the drawing
-        // is centered at origin so it renders around (cx, cy). Disable the
-        // outline/shadow on the box drawing so only the fill shows.
-        // For `pop`: fade the box in over popMs (fade-in only, no fade-out) so
-        // the highlight pops in alongside the word's scale transform.
         const boxFade = usePop ? `\\fad(${popMs},0)` : "";
-        const boxText = `{\\pos(${Math.round(cx)},${Math.round(cy)})\\an5${boxFade}\\1a&H${boxAlpha}&\\3a&HFF&\\4a&HFF&\\bord0\\shad0}${drawing}`;
-        body.push(
-          `Dialogue: 0,${formatAssTime(w.startMs)},${formatAssTime(w.endMs)},Highlight,,0,0,0,,${boxText}`,
-        );
+        // Box uses `\an7` (top-left anchor) with `\pos` at the box's screen
+        // top-left corner and a top-left-origin drawing path. Under `\an7` the
+        // drawing origin `(0,0)` lands exactly at `\pos`, so the box (0..boxW,
+        // 0..boxH) is centered on the text's (cx, cy). `\an5` would instead
+        // shift the centered drawing up by ~half the line height (verified),
+        // leaving the box floating above the word.
+        const boxX = Math.round(cx - boxW / 2);
+        const boxY = Math.round(cy - boxH / 2);
+        const boxText = `{\\pos(${boxX},${boxY})\\an7${boxFade}\\1a&H${boxAlpha}&\\3a&HFF&\\4a&HFF&\\bord0\\shad0}${drawing}`;
+        body.push(`Dialogue: 0,${start},${end},Highlight,,0,0,0,,${boxText}`);
       }
     }
   }
