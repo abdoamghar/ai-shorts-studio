@@ -156,6 +156,16 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
   const marginH = Math.round(videoW * (style.safeMarginPct ?? 0.09));
   const lineHeightPx = Math.round(style.fontSize * (style.lineHeight ?? 1.0));
   const defaultMarginV = Math.round(videoH * 0.34); // fallback; per-event overrides
+  // Per-word pop-in animation (MrBeast kinetic). `pop` drives two things per
+  // active word: the word's text scales from 150% to 100% over `popMs`, and
+  // its rounded highlight box fades+cycles in over the same window. `popMs`
+  // derives from `animationSpeed` (faster speed => snappier pop); clamped so
+  // it never exceeds ~half a short syllable. `none` => no transform applied.
+  const usePop = style.animationStyle === "pop";
+  const popMs = Math.max(
+    40,
+    Math.min(220, Math.round(140 / Math.max(0.1, style.animationSpeed))),
+  );
 
   // Compute each line's laid-out block geometry (lines + per-word offsets).
   const laid: LaidBlock[] = lines.map((ln) => layoutBlock(ln.words, style, videoW, videoH));
@@ -202,7 +212,13 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
         const word = esc(w.text);
         const trail = wi < visual.words.length - 1 ? " " : "";
         // All text stays primary (white); the box on layer 0 carries the color.
-        parts.push(`{\\k${durCs}}${word}${trail}`);
+        // For `pop`: animate THIS syllable's scale from 150% to 100% over popMs.
+        // The `\t` transform is scoped to the syllable it precedes (libass
+        // karaoke semantics), so each word independently pops in as it's spoken.
+        const anim = usePop
+          ? `\\t(0,${popMs},\\fscx150\\fscy150\\fscx100\\fscy100)`
+          : "";
+        parts.push(`{\\k${durCs}${anim}}${word}${trail}`);
       }
       if (li2 < block.lines.length - 1) parts.push("\\N");
     }
@@ -254,7 +270,10 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
         // an5 = center align; \pos places box center at (cx, cy); the drawing
         // is centered at origin so it renders around (cx, cy). Disable the
         // outline/shadow on the box drawing so only the fill shows.
-        const boxText = `{\\pos(${Math.round(cx)},${Math.round(cy)})\\an5\\1a&H${boxAlpha}&\\3a&HFF&\\4a&HFF&\\bord0\\shad0}${drawing}`;
+        // For `pop`: fade the box in over popMs (fade-in only, no fade-out) so
+        // the highlight pops in alongside the word's scale transform.
+        const boxFade = usePop ? `\\fad(${popMs},0)` : "";
+        const boxText = `{\\pos(${Math.round(cx)},${Math.round(cy)})\\an5${boxFade}\\1a&H${boxAlpha}&\\3a&HFF&\\4a&HFF&\\bord0\\shad0}${drawing}`;
         body.push(
           `Dialogue: 0,${formatAssTime(w.startMs)},${formatAssTime(w.endMs)},Highlight,,0,0,0,,${boxText}`,
         );

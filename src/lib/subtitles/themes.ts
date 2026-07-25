@@ -56,8 +56,16 @@ export type StyleJson = {
   lineHeight?: number;
   /** Highlight (karaoke sweep) color for the active word's rounded box, HSL. */
   highlightHsl: [number, number, number];
-  /** Karaoke highlight animation speed multiplier (1 = word duration). */
+  /** Karaoke highlight animation speed multiplier (1 = word duration). For
+   *  `animationStyle: "pop"` this also scales the pop settle time (faster
+   *  speed = snappier, shorter settle). */
   animationSpeed: number;
+  /** Per-word motion style. `"none"` (default) = the classic flat karaoke
+   *  highlight with no transform. `"pop"` = each spoken word scales in from
+   *  ~150% to 100% and its rounded highlight box fades+pops in, the
+   *  MrBeast-style kinetic feel. Implemented in ass.ts via libass `\t`
+   *  (transform over time) and `\fad` so it survives the burned-in render. */
+  animationStyle?: "none" | "pop";
   /** Rounded-box highlight horizontal padding (px at PlayResY=1920). */
   highlightPaddingX?: number;
   /** Rounded-box highlight vertical padding (px at PlayResY=1920). */
@@ -241,6 +249,9 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
       anchorY: 0.64,
       highlightHsl: AMBER,
       animationSpeed: 1.1,
+      // MrBeast kinetic look: each spoken word pops in (scale 150->100) and its
+      // amber highlight box fades+pops in with it. Other themes keep "none".
+      animationStyle: "pop",
       safeMarginPct: 0.1,
       maxBlockWidthPct: 0.8,
       lineHeight: 1.0,

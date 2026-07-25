@@ -37,6 +37,9 @@ const StyleJsonBody = z.object({
   marginL: z.number().int().min(0).max(400).optional(),
   marginV: z.number().int().min(0).max(960).optional(),
   highlightHsl: z.tuple([z.number(), z.number(), z.number()]),
+  // Per-word animation style: "pop" scales each spoken word in (150->100) and
+  // fades its highlight box in over popMs; "none" keeps the current behavior.
+  animationStyle: z.enum(["none", "pop"]).optional(),
   animationSpeed: z.number().min(0.1).max(4),
   maxChars: z.number().int().min(8).max(80),
   maxLines: z.number().int().min(1).max(5),

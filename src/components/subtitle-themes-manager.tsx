@@ -61,6 +61,7 @@ const DEFAULT_STYLE: StyleJson = {
   maxBlockWidthPct: 0.82,
   lineHeight: 1.0,
   highlightHsl: [42, 1, 0.55],
+  animationStyle: "none",
   animationSpeed: 1,
   highlightPaddingX: 14,
   highlightPaddingY: 8,
@@ -445,10 +446,22 @@ function EditorDialog(props: {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="th-bold">Bold</Label>
                 <Input id="th-bold" type="number" min={-1} max={1} value={s.bold} onChange={(e) => setStyle({ bold: Number(e.target.value) })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="th-style">Animation style</Label>
+                <select
+                  id="th-style"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={s.animationStyle ?? "none"}
+                  onChange={(e) => setStyle({ animationStyle: e.target.value as "none" | "pop" })}
+                >
+                  <option value="none">None (karaoke only)</option>
+                  <option value="pop">Pop-in (scale + fade)</option>
+                </select>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="th-speed">Animation speed</Label>
