@@ -34,6 +34,9 @@ export type JobProcessor = (ctx: JobContext) => Promise<void>;
 export type JobContext = {
   jobId: string;
   projectId: string;
+  /** Optional pipeline step to resume from (set by retry); handlers skip any
+   * step whose key comes strictly before this one. Undefined = full run. */
+  restartFromStep?: string;
   log: (message: string, level?: "info" | "warn" | "error") => void;
   setStep: (step: string, message?: string) => void;
   setProgress: (progress: number, message?: string) => void;
@@ -43,6 +46,8 @@ export type JobContext = {
 export type EnqueueInput = {
   projectId: string;
   type: JobType;
+  /** Optional pipeline step to resume from (used by retry). */
+  restartFromStep?: string;
 };
 
 const CONCURRENCY = 1;
@@ -102,6 +107,7 @@ class JobRunner {
         type: input.type,
         status: "queued",
         progress: 0,
+        restartFromStep: input.restartFromStep ?? null,
       })
       .run();
     const job = db.select().from(jobsTable).where(eq(jobsTable.id, id)).get()!;
@@ -138,11 +144,18 @@ class JobRunner {
     // context's isCancelled() (wired in phase 5). For v1 we accept that.
   }
 
-  /** Retry a failed/cancelled job by creating a fresh job row for the same project+type. */
+  /** Retry a failed/cancelled job by creating a fresh job row for the same
+   * project+type, seeded with the failed job's last `step` as the resume point
+   * so the pipeline doesn't redo completed steps (download/audio/transcribe).
+   */
   retry(jobId: string): Job {
     const job = this.get(jobId);
     if (!job) throw new Error("Job not found.");
-    return this.enqueue({ projectId: job.projectId!, type: job.type as JobType });
+    return this.enqueue({
+      projectId: job.projectId!,
+      type: job.type as JobType,
+      restartFromStep: job.step ?? undefined,
+    });
   }
 
   private async drain(): Promise<void> {
@@ -176,6 +189,7 @@ class JobRunner {
     const ctx: JobContext = {
       jobId,
       projectId: job.projectId!,
+      restartFromStep: job.restartFromStep ?? undefined,
       log: (message, level = "info") => this.log(jobId, undefined, message, level),
       setStep: (step, message) => this.updateStep(jobId, step, message),
       setProgress: (progress, message) => this.updateProgress(jobId, progress, message),

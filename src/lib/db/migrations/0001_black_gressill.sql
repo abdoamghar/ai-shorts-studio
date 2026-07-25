@@ -1,0 +1,1 @@
+ALTER TABLE `jobs` ADD `restart_from_step` text;

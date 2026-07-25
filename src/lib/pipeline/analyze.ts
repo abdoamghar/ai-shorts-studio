@@ -108,6 +108,16 @@ function setProjectStatus(projectId: string, status: string): void {
     .run();
 }
 
+function resolveStartIndex(restartFromStep: string | undefined): {
+  startIndex: number;
+  matched: boolean;
+} {
+  if (!restartFromStep) return { startIndex: 0, matched: true };
+  const idx = STEPS.findIndex((s) => s.key === restartFromStep);
+  if (idx === -1) return { startIndex: 0, matched: false };
+  return { startIndex: idx, matched: true };
+}
+
 async function analyzeHandler(ctx: JobContext): Promise<void> {
   ctx.log(`Starting analyze pipeline for project ${ctx.projectId}`);
 
@@ -116,7 +126,28 @@ async function analyzeHandler(ctx: JobContext): Promise<void> {
     throw new Error(`Project ${ctx.projectId} not found.`);
   }
 
-  for (const step of STEPS) {
+  // Retry resumes from the failed step: each step is internally idempotent
+  // (transcribe clears transcript rows, analyze clears clips, render deletes
+  // prior render rows per clip), so re-running the failed step is clean and we
+  // can safely skip the already-completed steps that precede it.
+  const { startIndex, matched } = resolveStartIndex(ctx.restartFromStep);
+  const planned = STEPS.slice(startIndex);
+  if (!matched && ctx.restartFromStep) {
+    ctx.log(
+      `Unknown restartFromStep "${ctx.restartFromStep}"; running full pipeline.`,
+      "warn",
+    );
+  }
+  if (startIndex > 0) {
+    const skipped = STEPS.slice(0, startIndex).map((s) => s.key).join(", ");
+    ctx.log(`Resuming from "${STEPS[startIndex].key}"; skipping: ${skipped}.`);
+    ctx.setProgress(
+      STEPS[startIndex].start,
+      `Resuming from ${STEPS[startIndex].label}`,
+    );
+  }
+
+  for (const step of planned) {
     ctx.setStep(step.key, step.label);
     ctx.setProgress(step.start, step.label);
     ctx.log(`Step: ${step.label}`);

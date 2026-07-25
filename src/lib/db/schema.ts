@@ -97,6 +97,9 @@ export const jobs = sqliteTable("jobs", {
   status: text("status").notNull().default("queued"),
   progress: integer("progress").notNull().default(0),
   step: text("step"),
+  // Optional pipeline step to resume from on retry (set by retry() to the
+  // failed job's last `step`). NULL = run the whole pipeline from the start.
+  restartFromStep: text("restart_from_step"),
   message: text("message"),
   error: text("error"),
   startedAt: text("started_at"),

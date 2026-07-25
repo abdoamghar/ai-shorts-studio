@@ -43,9 +43,25 @@ if (!globalForDb.__shortsDrizzle) globalForDb.__shortsDrizzle = db;
 /**
  * Apply the schema idempotently without a migration runner. Used in dev so a
  * fresh checkout just works; in production you'd run drizzle-kit migrate.
+ *
+ * `CREATE TABLE IF NOT EXISTS` does not add columns to an existing table, so
+ * additive schema changes also run a guarded `ALTER TABLE` here for DBs that
+ * were created before the column existed.
  */
 export function applySchema(): void {
   rawDb.exec(SCHEMA_SQL);
+  ensureColumn("jobs", "restart_from_step", "TEXT");
+}
+
+/**
+ * Add a column to an existing table if absent. SQLite has no `ADD COLUMN IF
+ * NOT EXISTS`, so we probe `PRAGMA table_info` and silence the "duplicate
+ * column" error by never issuing the statement when the column already exists.
+ */
+function ensureColumn(table: string, column: string, typeDecl: string): void {
+  const cols = rawDb.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === column)) return;
+  rawDb.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${typeDecl};`);
 }
 
 // Raw DDL kept in sync with src/lib/db/schema.ts. Drizzle's own migrations are
@@ -127,6 +143,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   status TEXT NOT NULL DEFAULT 'queued',
   progress INTEGER NOT NULL DEFAULT 0,
   step TEXT,
+  restart_from_step TEXT,
   message TEXT,
   error TEXT,
   started_at TEXT,
