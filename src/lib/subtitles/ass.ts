@@ -187,6 +187,26 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
     Math.min(220, Math.round(140 / Math.max(0.1, style.animationSpeed))),
   );
 
+  // Empirical glyph-box calibration. The measured word width (from the font
+  // metrics table in metrics.ts) sums per-character ADVANCE widths + a 3%
+  // safety inflation, which overstates the actual glyph ink footprint — the
+  // advance cell includes the side-bearing (whitespace built into each glyph)
+  // that consecutive glyphs overlap into, so the summed advance is wider than
+  // the rendered ink. Rendered vs measured across all-latin words is a stable
+  // ~0.81 (verified for KNOW 224/278, AMAZING 336/408, REMEMBER 420/517 — all
+  // within ±1%). We shrink the box width to that ratio so the highlight hugs
+  // the visible letters rather than the wider advance footprint.
+  //
+  // Vertically, `fontSize` is the full em square (ascender+descender), but
+  // Latin caps/digits/x-height only occupy the cap-height region. Measured
+  // Arial-Bold glyph height for fontSize 82 is ~53px = ~0.645*fontSize
+  // (consistent across the same words). Box height uses that ratio so the box
+  // doesn't tower above/below the letters. Both ratios are for the Arial /
+  // Arial-BoldMT render path libass actually uses (Inter isn't installed;
+  // DirectWrite substitutes Inter->Arial — see metrics.ts).
+  const BOX_WIDTH_INK_RATIO = 0.81;
+  const BOX_HEIGHT_INK_RATIO = 0.645;
+
   // Compute each line's laid-out block geometry (lines + per-word offsets).
   const laid: LaidBlock[] = lines.map((ln) => layoutBlock(ln.words, style, videoW, videoH));
 
@@ -232,16 +252,28 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
       // over-wide blocks (a line wider than the safe band), clamp the line into
       // the safe band so no word/box renders off-screen — a long line
       // left-aligns at the safe margin rather than centering off-screen.
+      //
+      // IMPORTANT: libass centers the REAL text at pos(lineCenterX) using the
+      // real font's advance widths, which our JS metrics table only ESTIMATES
+      // (and over-estimates — see BOX_WIDTH_INK_RATIO). The real glyph ink is
+      // a stable 0.81x of our measured width, so to make our per-word box
+      // CENTERS line up with the real glyph centers, we build the layout from
+      // an ink-scaled geometry: scale the measured block/line width and the
+      // per-word offsets/widths by the ink ratio, then center that. The scaled
+      // geometry matches the real text's centered footprint, so cx (computed
+      // from the scaled offsets) lands under the real glyph.
+      const inkBlockW = block.blockWidthPx * BOX_WIDTH_INK_RATIO;
+      const inkLineW = visual.widthPx * BOX_WIDTH_INK_RATIO;
       const centered =
-        videoW / 2 - block.blockWidthPx / 2 + (block.blockWidthPx - visual.widthPx) / 2;
-      const lineLeftX = Math.max(marginH, Math.min(safeRight - visual.widthPx, centered));
+        videoW / 2 - inkBlockW / 2 + (inkBlockW - inkLineW) / 2;
+      const lineLeftX = Math.max(marginH, Math.min(safeRight - inkLineW, centered));
       // Screen y of this visual line's CENTER, derived directly from the
       // anchor (not from libass's \N stacking): block center sits at
       // anchorY*videoH (+ marginV nudge via block.marginV), and the k visual
       // lines stack lineHeightPx apart around it.
       const lineCenterY =
         blockCenterY - ((block.lines.length - 1) * lineHeightPx) / 2 + li2 * lineHeightPx;
-      const lineCenterX = lineLeftX + visual.widthPx / 2;
+      const lineCenterX = lineLeftX + inkLineW / 2;
 
       // --- Layer 2: the persistent ghost line (ALL words visible the whole
       // block). One Dialogue per visual line, timed to the block window, text
@@ -260,7 +292,11 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
         const w = visual.words[wi];
         const wordW = visual.wordWidths[wi];
         const wordOffset = visual.wordOffsets[wi];
-        const cx = lineLeftX + wordOffset + wordW / 2;
+        // cx uses the measured offset/width scaled to the ink ratio (see the
+        // ink-scaled geometry above) so the box center matches the real glyph
+        // center that libass lays out, not the over-estimated measured center.
+        const cx =
+          lineLeftX + (wordOffset + wordW / 2) * BOX_WIDTH_INK_RATIO;
         const cy = lineCenterY;
         const start = formatAssTime(w.startMs);
         const end = formatAssTime(w.endMs);
@@ -271,8 +307,13 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
         // drawing origin `(0,0)` lands exactly at \pos (no ascent-offset), so
         // the box centers on the text. Outline/shadow disabled so only the
         // fill shows. For `pop`, fade the box in over popMs.
-        const boxW = wordW + padX * 2;
-        const boxH = style.fontSize + padY * 2;
+        // Box hugs the rendered glyph ink, not the wider advance footprint:
+        // shrink the measured word width to the ink ratio, then add padding.
+        // Vertically the box uses cap-height (not the full em) + padding, so it
+        // doesn't tower above/below the caps. Both ratios are calibrated against
+        // the actual Arial-BoldMT render path (see BOX_*_INK_RATIO above).
+        const boxW = Math.round(wordW * BOX_WIDTH_INK_RATIO) + padX * 2;
+        const boxH = Math.round(style.fontSize * BOX_HEIGHT_INK_RATIO) + padY * 2;
         const drawing = roundedRectDrawing(boxW, boxH, radius);
         const boxFade = usePop ? `\\fad(${popMs},0)` : "";
         const boxX = Math.round(cx - boxW / 2);
