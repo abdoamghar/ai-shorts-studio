@@ -49,8 +49,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--device",
-        default="cpu",
-        help="Compute device (default cpu; GPU requires ctranslate2 CUDA build)",
+        default="auto",
+        help="Compute device (default auto; GPU requires ctranslate2 CUDA build)",
     )
     p.add_argument("--compute-type", default="int8", help="CTranslate2 compute type")
     return p.parse_args()

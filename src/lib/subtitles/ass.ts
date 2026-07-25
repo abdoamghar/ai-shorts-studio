@@ -10,32 +10,30 @@ import type { StyleJson } from "@/lib/subtitles/themes";
  *   1. Lay the words out (`layoutBlock`): measure, greedy-wrap to the safe
  *      band, balance breaks, cap at ≤3 lines, anchor the block's center at
  *      `anchorY * videoH` (lower-middle, ~65% — clear of TikTok UI).
- *   2. Layering (classic karaoke: the WHOLE line is always visible; the accent
- *      highlight steps word-to-word in time with speech):
- *        - Layer 2 (text): ONE Dialogue per VISUAL LINE holding all its words,
- *          positioned with `\an5\pos` at the line's center, on screen for the
- *          ENTIRE block window `[blockStart, blockEnd]`. This is the persistent
- *          "ghost" line — every word stays visible while the block is spoken.
- *        - Layer 0 (box): one rounded-box highlight per WORD, drawn with `\p1`
- *          in top-left-origin coords (0..boxW, 0..boxH), positioned with
- *          `\an7\pos` at the box's screen top-left corner (cx-boxW/2,
- *          cy-boxH/2). Under `\an7` the drawing origin `(0,0)` lands exactly at
- *          `\pos` (no ascent-offset, verified), so the box centers on the
- *          word's (cx, cy). Each box is timed to its word's [start,end] so the
- *          accent steps in time with speech (no cumulative-`\k` drift across
- *          Whisper gaps).
- *        - Layer 1 (pop overlay, `animationStyle: "pop"` only): a second copy
- *          of the active word's text positioned exactly over the ghost line's
- *          glyph for that word, timed to the word's window, with
- *          `\t(0,popMs,\fscx150\fscy150\fscx100\fscy100)` so that single word
- *          scales 150->100 while the rest of the line stays put — the MrBeast
- *          kinetic pop. `none` skips this layer (the box alone cues the word).
+ *   2. Layering — two modes controlled by `style.wordPillMode`:
+ *
+ *   MODE: "none" (classic karaoke — default for old themes)
+ *     - Layer 2 (text): ONE Dialogue per VISUAL LINE holding all its words,
+ *       centered, on screen for the ENTIRE block window. Ghost line.
+ *     - Layer 0 (box): one rounded-box highlight per WORD, timed to its
+ *       [start,end]. Only the active word gets a colored box.
+ *     - Layer 1 (pop overlay, `animationStyle: "pop"` only): active word text
+ *       scales 150->100 while the rest stays put (MrBeast kinetic pop).
+ *
+ *   MODE: "all" (viral word-pill style — every word has its own dark pill)
+ *     - Layer 0 (dark ghost pills): one rounded dark-fill box per WORD, on
+ *       screen for the ENTIRE block window [blockStart, blockEnd]. All words
+ *       always have a dark background pill visible.
+ *     - Layer 1 (highlight pill): one rounded highlight-color box per WORD,
+ *       timed only to that word's [start,end]. This opaque colored pill
+ *       overlays the dark ghost pill for the currently-spoken word.
+ *     - Layer 2 (text): ONE Dialogue per VISUAL LINE, centered, on screen for
+ *       the ENTIRE block window. NO outline or shadow — the pills handle
+ *       legibility. Text is always fully visible on top of the pills.
  *
  * Because the ghost line and the per-word boxes both derive from the same
  * measured layout, the box always lands behind its word regardless of the
- * font's ascent/descent metrics (we never rely on libass's `\N` line-stacking
- * whose baseline math we can't replicate in JS). Times are CLIP-RELATIVE
- * (0-based) so the burn-in filter and the trimmed source share a timeline.
+ * font's ascent/descent metrics. Times are CLIP-RELATIVE (0-based).
  */
 
 export type AssWord = {
@@ -170,6 +168,16 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
   const highlight = hslToAssColor(style.highlightHsl);
   const boxAlpha = opacityToAssAlpha(style.highlightOpacity ?? 1);
 
+  // Word-pill mode: "all" = every word always has a dark ghost pill, and the
+  // active word gets a colored highlight pill on top. "none" (default) = only
+  // the active word gets a highlight pill (classic karaoke behavior).
+  const pillMode = style.wordPillMode ?? "none";
+  const usePills = pillMode === "all";
+
+  // Background pill color + opacity (only relevant when usePills = true).
+  const bgColor = hslToAssColor(style.bgHsl ?? [0, 0, 0.06]);
+  const bgAlpha = opacityToAssAlpha(style.bgOpacity ?? 0.7);
+
   const videoW = 1080;
   const videoH = 1920;
   // Safe margins (ASS px); reused for the style's MarginL/MarginR.
@@ -208,15 +216,28 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
   const BOX_HEIGHT_INK_RATIO = 0.645;
 
   // Compute each line's laid-out block geometry (lines + per-word offsets).
-  const laid: LaidBlock[] = lines.map((ln) => layoutBlock(ln.words, style, videoW, videoH));
+  const isUpper = style.uppercase === true;
+  const processedLines = isUpper
+    ? lines.map((ln) => ({
+        ...ln,
+        words: ln.words.map((w) => ({ ...w, text: w.text.toUpperCase() })),
+      }))
+    : lines;
+  const laid: LaidBlock[] = processedLines.map((ln) => layoutBlock(ln.words, style, videoW, videoH));
+
+  // When word-pill mode is "all" we suppress the text outline/shadow on the
+  // Default style because the dark ghost pills provide the legibility contrast.
+  // The Highlight style (used for drawing boxes) always has bord0/shad0.
+  const textOutline = usePills ? 0 : style.outline;
+  const textShadow = usePills ? 0 : style.shadow;
 
   // Styles: the ghost line (Layer 2) and the pop overlay (Layer 1) use the
-  // Default style; the per-word rounded box (Layer 0) uses Highlight. Every
-  // per-event Dialogue overrides alignment (\an5/\an7) and position (\pos),
-  // so the style-level alignment/margins are largely inert — we keep
-  // alignment 2 + a nominal MarginV only as a sane fallback if a renderer
-  // ever ignores per-event tags. WrapStyle 2 = no auto-wrap (each visual
-  // line is its own Dialogue; words stay on one row). BorderStyle 1 =
+  // Default style; the per-word rounded box (Layer 0/1 depending on mode) uses
+  // Highlight. Every per-event Dialogue overrides alignment (\an5/\an7) and
+  // position (\pos), so the style-level alignment/margins are largely inert —
+  // we keep alignment 2 + a nominal MarginV only as a sane fallback if a
+  // renderer ever ignores per-event tags. WrapStyle 2 = no auto-wrap (each
+  // visual line is its own Dialogue; words stay on one row). BorderStyle 1 =
   // outline + shadow. The Highlight style drives the box drawing layer.
   const header = [
     "[Script Info]",
@@ -229,8 +250,9 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    `Style: Default,${style.font},${style.fontSize},${primary},${primary},${outline},${outline},${style.bold},0,0,0,100,100,0,0,1,${style.outline},${style.shadow},2,${marginH},${marginH},${defaultMarginV},1`,
+    `Style: Default,${style.font},${style.fontSize},${primary},${primary},${outline},${outline},${style.bold},0,0,0,100,100,0,0,1,${textOutline},${textShadow},2,${marginH},${marginH},${defaultMarginV},1`,
     `Style: Highlight,${style.font},${style.fontSize},${highlight},${highlight},${outline},${outline},${style.bold},0,0,0,100,100,0,0,1,0,0,5,0,0,${defaultMarginV},1`,
+    `Style: BgPill,${style.font},${style.fontSize},${bgColor},${bgColor},${outline},${outline},${style.bold},0,0,0,100,100,0,0,1,0,0,5,0,0,${defaultMarginV},1`,
     "",
     "[Events]",
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -275,64 +297,125 @@ export function buildAss(lines: AssLine[], style: StyleJson): string {
         blockCenterY - ((block.lines.length - 1) * lineHeightPx) / 2 + li2 * lineHeightPx;
       const lineCenterX = lineLeftX + inkLineW / 2;
 
-      // --- Layer 2: the persistent ghost line (ALL words visible the whole
-      // block). One Dialogue per visual line, timed to the block window, text
-      // centered via \an5\pos. This is the line you read; the per-word accent
-      // box steps across it in time with speech. Outline/shadow from style. ---
-      const lineText = `{\\pos(${Math.round(lineCenterX)},${Math.round(lineCenterY)})\\an5}${esc(
-        visual.text,
-      )}`;
-      body.push(`Dialogue: 2,${blockStart},${blockEnd},Default,,0,0,0,,${lineText}`);
-
-      // --- Per-word Layer 0 box (accent stepping) + Layer 1 pop overlay. ---
+      // Pill geometry constants (shared across all word pills on this line).
       const padX = style.highlightPaddingX ?? 12;
       const padY = style.highlightPaddingY ?? 6;
       const radius = style.highlightRadius ?? 16;
-      for (let wi = 0; wi < visual.words.length; wi++) {
-        const w = visual.words[wi];
-        const wordW = visual.wordWidths[wi];
-        const wordOffset = visual.wordOffsets[wi];
-        // cx uses the measured offset/width scaled to the ink ratio (see the
-        // ink-scaled geometry above) so the box center matches the real glyph
-        // center that libass lays out, not the over-estimated measured center.
-        const cx =
-          lineLeftX + (wordOffset + wordW / 2) * BOX_WIDTH_INK_RATIO;
-        const cy = lineCenterY;
-        const start = formatAssTime(w.startMs);
-        const end = formatAssTime(w.endMs);
 
-        // Layer 0: rounded highlight box for THIS word, centered on (cx, cy).
-        // Drawing path is top-left-origin (0..boxW, 0..boxH) and the Dialogue
-        // uses \an7\pos at the box's screen top-left corner — under \an7 the
-        // drawing origin `(0,0)` lands exactly at \pos (no ascent-offset), so
-        // the box centers on the text. Outline/shadow disabled so only the
-        // fill shows. For `pop`, fade the box in over popMs.
-        // Box hugs the rendered glyph ink, not the wider advance footprint:
-        // shrink the measured word width to the ink ratio, then add padding.
-        // Vertically the box uses cap-height (not the full em) + padding, so it
-        // doesn't tower above/below the caps. Both ratios are calibrated against
-        // the actual Arial-BoldMT render path (see BOX_*_INK_RATIO above).
-        const boxW = Math.round(wordW * BOX_WIDTH_INK_RATIO) + padX * 2;
-        const boxH = Math.round(style.fontSize * BOX_HEIGHT_INK_RATIO) + padY * 2;
-        const drawing = roundedRectDrawing(boxW, boxH, radius);
-        const boxFade = usePop ? `\\fad(${popMs},0)` : "";
-        const boxX = Math.round(cx - boxW / 2);
-        const boxY = Math.round(cy - boxH / 2);
-        const boxText = `{\\pos(${boxX},${boxY})\\an7${boxFade}\\1a&H${boxAlpha}&\\3a&HFF&\\4a&HFF&\\bord0\\shad0}${drawing}`;
-        body.push(`Dialogue: 0,${start},${end},Highlight,,0,0,0,,${boxText}`);
+      if (usePills) {
+        // =====================================================================
+        // PILL MODE "all": Every word has a dark ghost pill (Layer 0, always on
+        // for the full block). Active word gets a violet highlight pill
+        // (Layer 1, timed to the word). Text layer (Layer 2) has no outline.
+        // =====================================================================
 
-        // Layer 1 (pop overlay only): a copy of the active word's text placed
-        // exactly over the ghost line's glyph for that word (same cx, cy),
-        // timed to the word's window, with a \t scale 150->100 over popMs so
-        // only the spoken word pops while the rest of the line stays flat.
-        // The overlay tracks the box (fades over popMs) to mask its abrupt
-        // appearance and keep the pop crisp.
-        if (usePop) {
-          const wordAnim = `\\t(0,${popMs},\\fscx150\\fscy150\\fscx100\\fscy100)`;
-          const overlayText = `{\\pos(${Math.round(cx)},${Math.round(
-            cy,
-          )})\\an5${wordAnim}\\fad(${popMs},0)}${esc(w.text)}`;
-          body.push(`Dialogue: 1,${start},${end},Default,,0,0,0,,${overlayText}`);
+        // --- Layer 0: Dark ghost pills for ALL words (full block duration) ---
+        for (let wi = 0; wi < visual.words.length; wi++) {
+          const wordW = visual.wordWidths[wi];
+          const wordOffset = visual.wordOffsets[wi];
+          const cx = lineLeftX + (wordOffset + wordW / 2) * BOX_WIDTH_INK_RATIO;
+          const cy = lineCenterY;
+
+          const boxW = Math.round(wordW * BOX_WIDTH_INK_RATIO) + padX * 2;
+          const boxH = Math.round(style.fontSize * BOX_HEIGHT_INK_RATIO) + padY * 2;
+          const drawing = roundedRectDrawing(boxW, boxH, radius);
+          const boxX = Math.round(cx - boxW / 2);
+          const boxY = Math.round(cy - boxH / 2);
+
+          // BgPill style: dark fill, no border, no shadow, always visible.
+          const bgPillText = `{\\pos(${boxX},${boxY})\\an7\\1a&H${bgAlpha}&\\3a&HFF&\\4a&HFF&\\bord0\\shad0}${drawing}`;
+          body.push(`Dialogue: 0,${blockStart},${blockEnd},BgPill,,0,0,0,,${bgPillText}`);
+        }
+
+        // --- Layer 1: Highlight pills for ACTIVE word (word timing) ---
+        for (let wi = 0; wi < visual.words.length; wi++) {
+          const w = visual.words[wi];
+          const wordW = visual.wordWidths[wi];
+          const wordOffset = visual.wordOffsets[wi];
+          const cx = lineLeftX + (wordOffset + wordW / 2) * BOX_WIDTH_INK_RATIO;
+          const cy = lineCenterY;
+          const start = formatAssTime(w.startMs);
+          const end = formatAssTime(w.endMs);
+
+          const boxW = Math.round(wordW * BOX_WIDTH_INK_RATIO) + padX * 2;
+          const boxH = Math.round(style.fontSize * BOX_HEIGHT_INK_RATIO) + padY * 2;
+          const drawing = roundedRectDrawing(boxW, boxH, radius);
+          const boxX = Math.round(cx - boxW / 2);
+          const boxY = Math.round(cy - boxH / 2);
+
+          // Highlight style: colored fill, no border, no shadow, word-timed.
+          const hlPillText = `{\\pos(${boxX},${boxY})\\an7\\1a&H${boxAlpha}&\\3a&HFF&\\4a&HFF&\\bord0\\shad0}${drawing}`;
+          body.push(`Dialogue: 1,${start},${end},Highlight,,0,0,0,,${hlPillText}`);
+        }
+
+        // --- Layer 2: Text ghost line (all words, full block duration) ---
+        // No outline/shadow in pill mode — the dark pill backgrounds provide
+        // the contrast. Text renders on top of both pill layers.
+        const lineText = `{\\pos(${Math.round(lineCenterX)},${Math.round(lineCenterY)})\\an5\\bord0\\shad0}${esc(visual.text)}`;
+        body.push(`Dialogue: 2,${blockStart},${blockEnd},Default,,0,0,0,,${lineText}`);
+
+      } else {
+        // =====================================================================
+        // CLASSIC MODE "none": Only the active word gets a highlight box.
+        // Text has outline + shadow from the style. Original behavior.
+        // =====================================================================
+
+        // --- Layer 2: the persistent ghost line (ALL words visible the whole
+        // block). One Dialogue per visual line, timed to the block window, text
+        // centered via \an5\pos. This is the line you read; the per-word accent
+        // box steps across it in time with speech. Outline/shadow from style. ---
+        const lineText = `{\\pos(${Math.round(lineCenterX)},${Math.round(lineCenterY)})\\an5}${esc(
+          visual.text,
+        )}`;
+        body.push(`Dialogue: 2,${blockStart},${blockEnd},Default,,0,0,0,,${lineText}`);
+
+        // --- Per-word Layer 0 box (accent stepping) + Layer 1 pop overlay. ---
+        for (let wi = 0; wi < visual.words.length; wi++) {
+          const w = visual.words[wi];
+          const wordW = visual.wordWidths[wi];
+          const wordOffset = visual.wordOffsets[wi];
+          // cx uses the measured offset/width scaled to the ink ratio (see the
+          // ink-scaled geometry above) so the box center matches the real glyph
+          // center that libass lays out, not the over-estimated measured center.
+          const cx =
+            lineLeftX + (wordOffset + wordW / 2) * BOX_WIDTH_INK_RATIO;
+          const cy = lineCenterY;
+          const start = formatAssTime(w.startMs);
+          const end = formatAssTime(w.endMs);
+
+          // Layer 0: rounded highlight box for THIS word, centered on (cx, cy).
+          // Drawing path is top-left-origin (0..boxW, 0..boxH) and the Dialogue
+          // uses \an7\pos at the box's screen top-left corner — under \an7 the
+          // drawing origin `(0,0)` lands exactly at \pos (no ascent-offset), so
+          // the box centers on the text. Outline/shadow disabled so only the
+          // fill shows. For `pop`, fade the box in over popMs.
+          // Box hugs the rendered glyph ink, not the wider advance footprint:
+          // shrink the measured word width to the ink ratio, then add padding.
+          // Vertically the box uses cap-height (not the full em) + padding, so it
+          // doesn't tower above/below the caps. Both ratios are calibrated against
+          // the actual Arial-BoldMT render path (see BOX_*_INK_RATIO above).
+          const boxW = Math.round(wordW * BOX_WIDTH_INK_RATIO) + padX * 2;
+          const boxH = Math.round(style.fontSize * BOX_HEIGHT_INK_RATIO) + padY * 2;
+          const drawing = roundedRectDrawing(boxW, boxH, radius);
+          const boxFade = usePop ? `\\fad(${popMs},0)` : "";
+          const boxX = Math.round(cx - boxW / 2);
+          const boxY = Math.round(cy - boxH / 2);
+          const boxText = `{\\pos(${boxX},${boxY})\\an7${boxFade}\\1a&H${boxAlpha}&\\3a&HFF&\\4a&HFF&\\bord0\\shad0}${drawing}`;
+          body.push(`Dialogue: 0,${start},${end},Highlight,,0,0,0,,${boxText}`);
+
+          // Layer 1 (pop overlay only): a copy of the active word's text placed
+          // exactly over the ghost line's glyph for that word (same cx, cy),
+          // timed to the word's window, with a \t scale 150->100 over popMs so
+          // only the spoken word pops while the rest of the line stays flat.
+          // The overlay tracks the box (fades over popMs) to mask its abrupt
+          // appearance and keep the pop crisp.
+          if (usePop) {
+            const wordAnim = `\\t(0,${popMs},\\fscx150\\fscy150\\fscx100\\fscy100)`;
+            const overlayText = `{\\pos(${Math.round(cx)},${Math.round(
+              cy,
+            )})\\an5${wordAnim}\\fad(${popMs},0)}${esc(w.text)}`;
+            body.push(`Dialogue: 1,${start},${end},Default,,0,0,0,,${overlayText}`);
+          }
         }
       }
     }

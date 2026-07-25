@@ -74,10 +74,37 @@ export type StyleJson = {
   highlightRadius?: number;
   /** Rounded-box fill opacity 0-1 (1 = solid). */
   highlightOpacity?: number;
+  /**
+   * Word-pill mode. Controls whether every word gets its own dark background
+   * pill (always visible for the full block), with the active word's pill
+   * replaced by the highlight color.
+   *
+   * - `"none"` (default): classic karaoke — only the active word gets a
+   *   highlight box; non-active words show with outline/shadow only.
+   * - `"all"`: EVERY word has a dark `bgHsl` pill for the full block window.
+   *   The active word's pill is replaced by the `highlightHsl` colored pill
+   *   for the duration of that word. This matches the viral TikTok style where
+   *   all words are always "boxed" and the spoken word pops with color.
+   */
+  wordPillMode?: "none" | "all";
+  /**
+   * Background pill color (HSL). Only used when `wordPillMode: "all"`.
+   * Default near-black: [0, 0, 0.06].
+   */
+  bgHsl?: [number, number, number];
+  /**
+   * Background pill fill opacity 0-1. Only used when `wordPillMode: "all"`.
+   * Default 0.7 — dark but not fully opaque so the video peeks through.
+   */
+  bgOpacity?: number;
   /** Max characters per line (advisory; used only by the SRT companion path). */
   maxChars: number;
   /** Max lines per subtitle event (hard-capped at 3 by the layout). */
   maxLines: number;
+  /** If true, the subtitle text is forced to uppercase. */
+  uppercase?: boolean;
+  /** Em-width space between words. Defaults to 0.278. Increase for wider gaps. */
+  wordSpacingEm?: number;
 };
 
 export type BuiltinTheme = {
@@ -87,185 +114,319 @@ export type BuiltinTheme = {
   styleJson: StyleJson;
 };
 
-const VIOLET: [number, number, number] = [262, 0.83, 0.65];
-const WHITE: [number, number, number] = [0, 0, 1];
-const BLACK: [number, number, number] = [0, 0, 0];
-const AMBER: [number, number, number] = [42, 1, 0.55];
-const YELLOW: [number, number, number] = [54, 1, 0.5];
-const BLUE: [number, number, number] = [210, 1, 0.45];
+// ── Color palette ──────────────────────────────────────────────────────────────
+const WHITE: [number, number, number]       = [0, 0, 1];
+const BLACK: [number, number, number]       = [0, 0, 0];
+const NEAR_BLACK: [number, number, number]  = [0, 0, 0.06];
+const AMBER: [number, number, number]       = [42, 1, 0.55];
+const PURPLE_HIGHLIGHT: [number, number, number] = [258, 0.75, 0.6];
+
+// New creative palette
+const NEON_GREEN: [number, number, number]  = [145, 1, 0.5];     // #00ff80 energy
+const HOT_PINK: [number, number, number]    = [330, 1, 0.58];    // hot pink
+const CYAN: [number, number, number]        = [189, 1, 0.5];     // electric cyan
+const ORANGE: [number, number, number]      = [22, 1, 0.55];     // punchy orange
+const GOLD: [number, number, number]        = [45, 0.95, 0.52];  // luxury gold
+const DEEP_NAVY: [number, number, number]   = [222, 0.47, 0.11]; // near-black navy
+const CRIMSON: [number, number, number]     = [348, 0.9, 0.45];  // deep red
+const ELECTRIC_BLUE: [number, number, number] = [217, 1, 0.6];  // electric blue
+const CREAM: [number, number, number]       = [45, 0.4, 0.92];   // warm off-white
+const DARK_PILL: [number, number, number]   = [220, 0.15, 0.1];  // dark blue-gray pill
 
 export const BUILTIN_THEMES: BuiltinTheme[] = [
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 1. VIRAL (Word Pills) — original viral style, kept as default
+  // ─────────────────────────────────────────────────────────────────────────────
   {
-    key: "tiktok",
-    name: "TikTok",
-    presetKey: "tiktok",
+    key: "viral",
+    name: "Viral (Word Pills)",
+    presetKey: "viral",
     styleJson: {
-      font: "Inter",
-      fontMetricsKey: "inter-bold",
-      fontSize: 82,
+      font: "Arial",
+      fontMetricsKey: "arial-bold",
+      fontSize: 85,
       primaryHsl: WHITE,
       outlineHsl: BLACK,
-      outline: 10,
+      outline: 0,
+      shadow: 0,
+      bold: 1,
+      anchorY: 0.65,
+      wordPillMode: "all",
+      bgHsl: NEAR_BLACK,
+      bgOpacity: 0.72,
+      highlightHsl: PURPLE_HIGHLIGHT,
+      highlightOpacity: 1,
+      animationStyle: "none",
+      animationSpeed: 1,
+      safeMarginPct: 0.08,
+      maxBlockWidthPct: 0.84,
+      lineHeight: 1.15,
+      highlightPaddingX: 10,
+      highlightPaddingY: 10,
+      highlightRadius: 10,
+      maxChars: 13,
+      maxLines: 2,
+      uppercase: true,
+      wordSpacingEm: 0.5,
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 2. NEON RAVE — Neon green pills on a dark background, electric feel
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    key: "neon-rave",
+    name: "Neon Rave",
+    presetKey: "neon-rave",
+    styleJson: {
+      font: "Verdana",
+      fontMetricsKey: "verdana-bold",
+      fontSize: 78,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 0,
+      bold: 1,
+      anchorY: 0.65,
+      wordPillMode: "all",
+      bgHsl: DARK_PILL,
+      bgOpacity: 0.8,
+      highlightHsl: NEON_GREEN,
+      highlightOpacity: 1,
+      animationStyle: "pop",
+      animationSpeed: 1.1,
+      safeMarginPct: 0.08,
+      maxBlockWidthPct: 0.84,
+      lineHeight: 1.18,
+      highlightPaddingX: 14,
+      highlightPaddingY: 10,
+      highlightRadius: 14,
+      maxChars: 13,
+      maxLines: 2,
+      uppercase: true,
+      wordSpacingEm: 0.45,
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 3. FIRE SPEAKER — Crimson & orange, aggressive energy, debates & rants
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    key: "fire-speaker",
+    name: "Fire Speaker",
+    presetKey: "fire-speaker",
+    styleJson: {
+      font: "Impact",
+      fontMetricsKey: "impact",
+      fontSize: 105,
+      primaryHsl: CREAM,
+      outlineHsl: CRIMSON,
+      outline: 12,
+      shadow: 6,
+      bold: 1,
+      anchorY: 0.64,
+      wordPillMode: "all",
+      bgHsl: [0, 0, 0.05],
+      bgOpacity: 0.75,
+      highlightHsl: ORANGE,
+      highlightOpacity: 1,
+      animationStyle: "pop",
+      animationSpeed: 1.2,
+      safeMarginPct: 0.09,
+      maxBlockWidthPct: 0.82,
+      lineHeight: 1.1,
+      highlightPaddingX: 16,
+      highlightPaddingY: 10,
+      highlightRadius: 8,
+      maxChars: 13,
+      maxLines: 2,
+      uppercase: true,
+      wordSpacingEm: 0.4,
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 4. ICE COLD — Cyan / electric blue, cool and premium podcast style
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    key: "ice-cold",
+    name: "Ice Cold",
+    presetKey: "ice-cold",
+    styleJson: {
+      font: "Tahoma",
+      fontMetricsKey: "tahoma-bold",
+      fontSize: 80,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 0,
       shadow: 0,
       bold: 1,
       anchorY: 0.66,
-      highlightHsl: AMBER,
+      wordPillMode: "all",
+      bgHsl: DEEP_NAVY,
+      bgOpacity: 0.82,
+      highlightHsl: CYAN,
+      highlightOpacity: 1,
+      animationStyle: "none",
+      animationSpeed: 1,
+      safeMarginPct: 0.09,
+      maxBlockWidthPct: 0.84,
+      lineHeight: 1.15,
+      highlightPaddingX: 14,
+      highlightPaddingY: 10,
+      highlightRadius: 20,
+      maxChars: 14,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.45,
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 5. PINK POP — Hot pink highlight pop, high-energy entertainment/lifestyle
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    key: "pink-pop",
+    name: "Pink Pop",
+    presetKey: "pink-pop",
+    styleJson: {
+      font: "Verdana",
+      fontMetricsKey: "verdana-bold",
+      fontSize: 76,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 0,
+      bold: 1,
+      anchorY: 0.65,
+      wordPillMode: "all",
+      bgHsl: [0, 0, 0.06],
+      bgOpacity: 0.70,
+      highlightHsl: HOT_PINK,
+      highlightOpacity: 1,
+      animationStyle: "pop",
+      animationSpeed: 1.15,
+      safeMarginPct: 0.08,
+      maxBlockWidthPct: 0.84,
+      lineHeight: 1.18,
+      highlightPaddingX: 14,
+      highlightPaddingY: 10,
+      highlightRadius: 50, // fully rounded = pill shape
+      maxChars: 13,
+      maxLines: 2,
+      uppercase: true,
+      wordSpacingEm: 0.5,
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 6. GOLD LUXURY — Gold highlights, dark background, high-status / finance
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    key: "gold-luxury",
+    name: "Gold Luxury",
+    presetKey: "gold-luxury",
+    styleJson: {
+      font: "Arial",
+      fontMetricsKey: "arial-bold",
+      fontSize: 84,
+      primaryHsl: CREAM,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 4,
+      bold: 1,
+      anchorY: 0.65,
+      wordPillMode: "all",
+      bgHsl: [0, 0, 0.04],
+      bgOpacity: 0.88,
+      highlightHsl: GOLD,
+      highlightOpacity: 1,
+      animationStyle: "none",
       animationSpeed: 1,
       safeMarginPct: 0.09,
       maxBlockWidthPct: 0.82,
-      lineHeight: 1.0,
-      highlightPaddingX: 14,
-      highlightPaddingY: 8,
-      highlightRadius: 18,
-      highlightOpacity: 1,
-      maxChars: 22,
-      maxLines: 2,
-    },
-  },
-  {
-    key: "hormozi",
-    name: "Hormozi",
-    presetKey: "hormozi",
-    styleJson: {
-      font: "Inter",
-      fontMetricsKey: "inter-bold",
-      fontSize: 88,
-      primaryHsl: WHITE,
-      outlineHsl: BLACK,
-      outline: 14,
-      shadow: 0,
-      bold: 1,
-      anchorY: 0.64,
-      highlightHsl: VIOLET,
-      animationSpeed: 1.1,
-      safeMarginPct: 0.1,
-      maxBlockWidthPct: 0.8,
-      lineHeight: 1.0,
+      lineHeight: 1.2,
       highlightPaddingX: 16,
       highlightPaddingY: 10,
-      highlightRadius: 20,
-      highlightOpacity: 1,
-      maxChars: 20,
-      maxLines: 3,
-    },
-  },
-  {
-    key: "minimal",
-    name: "Minimal",
-    presetKey: "minimal",
-    styleJson: {
-      font: "Inter",
-      fontMetricsKey: "inter-regular",
-      fontSize: 60,
-      primaryHsl: WHITE,
-      outlineHsl: BLACK,
-      outline: 4,
-      shadow: 2,
-      bold: 0,
-      anchorY: 0.66,
-      highlightHsl: AMBER,
-      animationSpeed: 1,
-      safeMarginPct: 0.1,
-      maxBlockWidthPct: 0.84,
-      lineHeight: 1.05,
-      // Minimal keeps the subtle per-word recolor (no big box): tiny padding,
-      // small radius, low opacity — a faint accent, not a pill.
-      highlightPaddingX: 6,
-      highlightPaddingY: 2,
-      highlightRadius: 4,
-      highlightOpacity: 0.25,
-      maxChars: 30,
+      highlightRadius: 6,
+      maxChars: 14,
       maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.45,
     },
   },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 7. ELECTRIC KINETIC — Electric blue outline, amber pop, MrBeast energy
+  // ─────────────────────────────────────────────────────────────────────────────
   {
-    key: "bold",
-    name: "Bold",
-    presetKey: "bold",
+    key: "electric-kinetic",
+    name: "Electric Kinetic",
+    presetKey: "electric-kinetic",
     styleJson: {
-      font: "Inter",
-      fontMetricsKey: "inter-bold",
-      fontSize: 96,
+      font: "Impact",
+      fontMetricsKey: "impact",
+      fontSize: 110,
       primaryHsl: WHITE,
-      outlineHsl: BLACK,
-      outline: 16,
-      shadow: 4,
-      bold: 1,
-      anchorY: 0.64,
-      highlightHsl: YELLOW,
-      animationSpeed: 1,
-      safeMarginPct: 0.1,
-      maxBlockWidthPct: 0.8,
-      lineHeight: 1.0,
-      highlightPaddingX: 18,
-      highlightPaddingY: 12,
-      highlightRadius: 22,
-      highlightOpacity: 1,
-      maxChars: 18,
-      maxLines: 2,
-    },
-  },
-  {
-    key: "classic",
-    name: "Classic",
-    presetKey: "classic",
-    styleJson: {
-      font: "Inter",
-      fontMetricsKey: "inter-regular",
-      fontSize: 64,
-      primaryHsl: WHITE,
-      outlineHsl: BLACK,
-      outline: 6,
-      shadow: 2,
-      bold: 0,
-      anchorY: 0.65,
-      highlightHsl: AMBER,
-      animationSpeed: 1,
-      safeMarginPct: 0.1,
-      maxBlockWidthPct: 0.84,
-      lineHeight: 1.05,
-      // Classic: small amber box, modest radius — restrained but present.
-      highlightPaddingX: 10,
-      highlightPaddingY: 6,
-      highlightRadius: 12,
-      highlightOpacity: 0.9,
-      maxChars: 28,
-      maxLines: 2,
-    },
-  },
-  {
-    key: "mrbeast",
-    name: "MrBeast",
-    presetKey: "mrbeast",
-    styleJson: {
-      font: "Inter",
-      fontMetricsKey: "inter-bold",
-      fontSize: 90,
-      primaryHsl: WHITE,
-      outlineHsl: BLUE,
+      outlineHsl: ELECTRIC_BLUE,
       outline: 18,
       shadow: 6,
       bold: 1,
       anchorY: 0.64,
       highlightHsl: AMBER,
-      animationSpeed: 1.1,
-      // MrBeast kinetic look: each spoken word pops in (scale 150->100) and its
-      // amber highlight box fades+pops in with it. Other themes keep "none".
+      highlightOpacity: 1,
       animationStyle: "pop",
+      animationSpeed: 1.2,
       safeMarginPct: 0.1,
       maxBlockWidthPct: 0.8,
       lineHeight: 1.0,
       highlightPaddingX: 18,
       highlightPaddingY: 10,
       highlightRadius: 20,
-      highlightOpacity: 1,
       maxChars: 18,
       maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.3,
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 8. CLEAN GHOST — White text, ultra-thin outline, minimal translucent box
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    key: "clean-ghost",
+    name: "Clean Ghost",
+    presetKey: "clean-ghost",
+    styleJson: {
+      font: "Tahoma",
+      fontMetricsKey: "tahoma",
+      fontSize: 66,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 3,
+      shadow: 0,
+      bold: 0,
+      anchorY: 0.67,
+      wordPillMode: "none",
+      highlightHsl: WHITE,
+      highlightOpacity: 0.15,
+      animationStyle: "none",
+      animationSpeed: 1,
+      safeMarginPct: 0.1,
+      maxBlockWidthPct: 0.84,
+      lineHeight: 1.1,
+      highlightPaddingX: 10,
+      highlightPaddingY: 6,
+      highlightRadius: 8,
+      maxChars: 28,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.28,
     },
   },
 ];
 
-export const DEFAULT_THEME_KEY = "tiktok";
+export const DEFAULT_THEME_KEY = "viral";
 
 export function findBuiltinTheme(key: string): BuiltinTheme | undefined {
   return BUILTIN_THEMES.find((t) => t.key === key);

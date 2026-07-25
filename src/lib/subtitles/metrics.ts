@@ -94,6 +94,47 @@ const ARIAL_BOLD_METRICS: FontMetrics = {
  * machine (see header). Any unknown font falls back to Arial too, since
  * DirectWrite's substitution produces an Arial-family result in practice.
  */
+// Impact is a condensed font — characters are roughly 55-65% of Arial's width.
+// These are estimated ratios based on Impact's well-known narrow profile.
+const IMPACT_METRICS: FontMetrics = {
+  advances: (() => {
+    const base = buildArialAdvances(1);
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(base)) out[k] = +(v * 0.62).toFixed(3);
+    return out;
+  })(),
+  avgAdvance: 0.556 * 0.62,
+  spaceAdvance: 0.278 * 0.62,
+  lineGap: 1.0,
+};
+
+// Verdana is wider than Arial — designed for on-screen readability.
+// Characters are roughly 115% of Arial's width.
+const VERDANA_BOLD_METRICS: FontMetrics = {
+  advances: (() => {
+    const base = buildArialAdvances(1.06);
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(base)) out[k] = +(v * 1.15).toFixed(3);
+    return out;
+  })(),
+  avgAdvance: 0.556 * 1.06 * 1.15,
+  spaceAdvance: 0.278 * 1.2,
+  lineGap: 1.0,
+};
+
+// Tahoma is close to Arial but slightly wider.
+const TAHOMA_METRICS: FontMetrics = {
+  advances: (() => {
+    const base = buildArialAdvances(1.06);
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(base)) out[k] = +(v * 1.05).toFixed(3);
+    return out;
+  })(),
+  avgAdvance: 0.556 * 1.06 * 1.05,
+  spaceAdvance: 0.278 * 1.05,
+  lineGap: 1.0,
+};
+
 export const FONT_METRICS: Record<string, FontMetrics> = {
   "inter-bold": ARIAL_BOLD_METRICS,
   "inter": ARIAL_BOLD_METRICS, // alias: app's default theme font name
@@ -101,6 +142,13 @@ export const FONT_METRICS: Record<string, FontMetrics> = {
   "arial-bold": ARIAL_BOLD_METRICS,
   "arial": ARIAL_BOLD_METRICS,
   "arial-regular": ARIAL_REG_METRICS,
+  // Windows built-in fonts
+  "impact": IMPACT_METRICS,
+  "impact-bold": IMPACT_METRICS,
+  "verdana-bold": VERDANA_BOLD_METRICS,
+  "verdana": VERDANA_BOLD_METRICS,
+  "tahoma": TAHOMA_METRICS,
+  "tahoma-bold": TAHOMA_METRICS,
 };
 
 /**

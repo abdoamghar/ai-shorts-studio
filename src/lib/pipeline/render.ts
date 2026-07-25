@@ -50,74 +50,83 @@ export async function runRender(ctx: JobContext): Promise<void> {
 
   let done = 0;
   let failed = 0;
-  for (const clip of clips) {
-    const assPath = clipAssPath(ctx.projectId, clip.idx);
-    if (!existsSync(assPath)) {
-      ctx.log(`Skipping clip ${clip.idx}: missing ASS (run the subtitles step).`, "warn");
-      db.update(clipsTable)
-        .set({ status: "failed" })
-        .where(eq(clipsTable.id, clip.id))
-        .run();
-      failed++;
-      continue;
-    }
-    const outPath = clipRenderPath(ctx.projectId, clip.idx);
-    db.update(clipsTable)
-      .set({ status: "rendering" })
-      .where(eq(clipsTable.id, clip.id))
-      .run();
 
-    // We report aggregate per-clip progress (done/total) for the step window;
-    // renderClip's intra-ffmpeg progress is intentionally not forwarded here
-    // (the orchestrator already mapped this step's ctx to the global window).
-    try {
-      await renderClip({
-        projectId: ctx.projectId,
-        startMs: clip.startMs,
-        endMs: clip.endMs,
-        assPath,
-        outPath,
-      });
-    } catch (err) {
-      ctx.log(`Clip ${clip.idx} render failed: ${err instanceof Error ? err.message : "unknown"}`, "error");
-      db.update(clipsTable)
-        .set({ status: "failed" })
-        .where(eq(clipsTable.id, clip.id))
-        .run();
-      failed++;
-      done++;
-      ctx.setProgress(Math.round((done / clips.length) * 100), `Rendered ${done}/${clips.length} (1 failed)`);
-      continue;
-    }
+  // Process up to 2 clips concurrently
+  const concurrency = 2;
+  for (let i = 0; i < clips.length; i += concurrency) {
+    const chunk = clips.slice(i, i + concurrency);
+    
+    // 1. Run ffmpeg concurrently without touching the DB
+    const results = await Promise.all(
+      chunk.map(async (clip) => {
+        const assPath = clipAssPath(ctx.projectId, clip.idx);
+        if (!existsSync(assPath)) {
+          return { clip, success: false, error: `Skipping clip ${clip.idx}: missing ASS.` };
+        }
+        
+        const outPath = clipRenderPath(ctx.projectId, clip.idx);
 
-    // Record metadata in `renders`. Delete any prior render row for this clip.
-    db.delete(rendersTable).where(eq(rendersTable.clipId, clip.id)).run();
-    let sizeBytes: number | null = null;
-    try {
-      sizeBytes = statSync(outPath).size;
-    } catch {
-      sizeBytes = null;
-    }
-    const durationMs = Math.max(0, clip.endMs - clip.startMs);
-    db.insert(rendersTable)
-      .values({
-        id: randomUUID(),
-        clipId: clip.id,
-        format: "mp4",
-        resolution: "1080x1920",
-        themeId: null,
-        path: outPath,
-        sizeBytes,
-        durationMs,
+        let framingStyle: "blur" | "crop" = "blur";
+        try {
+          if (project.settingsJson) {
+            const parsed = JSON.parse(project.settingsJson);
+            if (parsed.framingStyle === "crop") framingStyle = "crop";
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
+          await renderClip({
+            projectId: ctx.projectId,
+            startMs: clip.startMs,
+            endMs: clip.endMs,
+            assPath,
+            outPath,
+            framingStyle,
+          });
+          return { clip, success: true, outPath };
+        } catch (err) {
+          return { clip, success: false, error: err instanceof Error ? err.message : "unknown" };
+        }
       })
-      .run();
-    db.update(clipsTable)
-      .set({ status: "rendered" })
-      .where(eq(clipsTable.id, clip.id))
-      .run();
+    );
 
-    done++;
-    ctx.setProgress(Math.round((done / clips.length) * 100), `Rendered ${done}/${clips.length}`);
+    // 2. Process DB updates sequentially to avoid better-sqlite3 concurrency issues
+    for (const res of results) {
+      if (!res.success) {
+        ctx.log(`Clip ${res.clip.idx} render failed: ${res.error}`, "error");
+        db.update(clipsTable).set({ status: "failed" }).where(eq(clipsTable.id, res.clip.id)).run();
+        failed++;
+      } else {
+        const outPath = res.outPath!;
+        db.delete(rendersTable).where(eq(rendersTable.clipId, res.clip.id)).run();
+        
+        let sizeBytes: number | null = null;
+        try {
+          sizeBytes = statSync(outPath).size;
+        } catch {
+          sizeBytes = null;
+        }
+        
+        const durationMs = Math.max(0, res.clip.endMs - res.clip.startMs);
+        db.insert(rendersTable).values({
+          id: randomUUID(),
+          clipId: res.clip.id,
+          format: "mp4",
+          resolution: "1080x1920",
+          themeId: null,
+          path: outPath,
+          sizeBytes,
+          durationMs,
+        }).run();
+        
+        db.update(clipsTable).set({ status: "rendered" }).where(eq(clipsTable.id, res.clip.id)).run();
+      }
+      done++;
+      ctx.setProgress(Math.round((done / clips.length) * 100), `Rendered ${done}/${clips.length} (${failed} failed)`);
+    }
   }
+  
   ctx.log(`Render complete: ${done - failed} rendered, ${failed} failed.`);
 }

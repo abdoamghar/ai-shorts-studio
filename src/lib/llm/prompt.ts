@@ -25,8 +25,8 @@ export type PromptInput = {
   settings: ClipSettings;
 };
 
-/** Rough token budget for the transcript payload (conservative for ~128k ctx). */
-const TRANSCRIPT_TOKEN_BUDGET = 26_000;
+/** Rough token budget for the transcript payload (increased for full-video context with 1-2M ctx models). */
+const TRANSCRIPT_TOKEN_BUDGET = 500_000;
 const CHARS_PER_TOKEN = 4;
 
 function fmtTs(ms: number): string {
@@ -64,12 +64,7 @@ function chunkTranscript(
 
 export function buildClipPrompt(input: PromptInput): string {
   const { settings, durationSec } = input;
-  const minSec = Math.max(8, Math.round(settings.targetClipSec * 0.6));
-  const maxSec = Math.round(settings.targetClipSec * 1.6);
-  const rubric = SCORING_RUBRIC.replace("{minSec}", String(minSec)).replace(
-    "{maxSec}",
-    String(maxSec),
-  );
+  const rubric = SCORING_RUBRIC; // Now fully hardcoded in schema.ts
 
   const charBudget = TRANSCRIPT_TOKEN_BUDGET * CHARS_PER_TOKEN;
   const chunks = chunkTranscript(input.segments, charBudget);
@@ -83,7 +78,7 @@ export function buildClipPrompt(input: PromptInput): string {
 
   return `${settings.promptTemplateText}
 
-Source duration: ${Math.round(durationSec)}s. Aim for up to ${settings.maxClips} clips, each ~${settings.targetClipSec}s (range ${minSec}-${maxSec}s).
+Source duration: ${Math.round(durationSec)}s. Aim for up to ${settings.maxClips} clips.
 
 Respond with this EXACT JSON shape:
 ${CLIP_JSON_CONTRACT}

@@ -77,13 +77,16 @@ export const CLIP_JSON_CONTRACT = `{
 }`;
 
 /** The scoring rubric instructions appended to every category prompt. */
-export const SCORING_RUBRIC = `Score each clip on a 0-10 scale:
-- hook: how strong the opening 1-3 seconds are
-- emotion: intensity/transformation of feeling
-- curiosity: does it make you want to hear the answer
-- shareability: would someone forward it
-- retention: pacing that keeps a viewer watching to the end
-- educational: standalone informational value
-- overall: your holistic judgment of how good a short this makes
-Keep clips between {minSec}s and {maxSec}s. Times are in SECONDS and are source-absolute (not clip-relative).
-Return only the JSON object above; do not include commentary or markdown.`;
+export const SCORING_RUBRIC = `INSTRUCTIONS FOR STORY EDITING & VIRAL SCORING:
+1. HOLISTIC CONTEXT: Mentally divide the video into overarching themes or "chapters". Identify the most engaging narrative arcs within those chapters.
+2. DYNAMIC DURATION: Each clip must be a complete, self-contained narrative segment between strictly 60 seconds (1 minute) and 180 seconds (3 minutes) long. Do not end a clip prematurely; use the time to ensure the story resolves naturally. Times are in SECONDS and are source-absolute (not clip-relative).
+3. VIRAL SCORING: Score each clip on a 0-10 scale based on proven short-form algorithms:
+- hook: does the first 3 seconds create an information gap or immediate intrigue?
+- emotion: is there a clear shift in tone, a debate, or a revelation?
+- curiosity: does it make you want to hear the answer or see the resolution?
+- shareability: does the subject matter apply to a wide audience who would forward it?
+- retention: does the pacing keep a viewer watching, and does the ending tie back to the beginning?
+- educational: does it provide standalone informational value?
+- overall: your holistic judgment of the clip's viral potential.
+
+Return ONLY the JSON object above; do not include commentary or markdown.`;

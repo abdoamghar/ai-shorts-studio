@@ -90,7 +90,11 @@ export function buildLines(
 
   for (const w of words) {
     const addLen = (lineLen ? lineLen + 1 : 0) + w.text.length;
-    if (lineLen > 0 && addLen > maxChars * maxLines) {
+    const isOverflow = lineLen > 0 && addLen > maxChars * maxLines;
+    const lastW = buf.length > 0 ? buf[buf.length - 1] : null;
+    const isPause = lastW && (w.startMs - lastW.endMs > 400);
+
+    if (isOverflow || isPause) {
       flush();
     }
     buf.push(w);

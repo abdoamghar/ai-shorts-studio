@@ -56,6 +56,7 @@ export async function GET() {
 
 const Body = z.object({
   url: z.string().trim().min(1, "URL is required."),
+  framingStyle: z.enum(["blur", "crop"]).optional(),
 });
 
 /** Extract the 11-char YouTube video id from any standard URL form. */
@@ -111,8 +112,10 @@ export async function POST(request: Request) {
   }
 
   const id = randomUUID();
+  const settingsJson = parsed.data.framingStyle ? JSON.stringify({ framingStyle: parsed.data.framingStyle }) : "{}";
+  
   db.insert(projectsTable)
-    .values({ id, url, videoId, status: "pending" })
+    .values({ id, url, videoId, status: "pending", settingsJson })
     .run();
 
   const job = jobRunner.enqueue({ projectId: id, type: "analyze" });

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { jobRunner } from "@/lib/jobs/runner";
+import "@/lib/pipeline/analyze";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,14 @@ export async function POST(
   }
 
   try {
-    const job = jobRunner.retry(id);
+    let targetStep: string | undefined;
+    try {
+      const body = await _request.json();
+      targetStep = body.step;
+    } catch {
+      // body is optional
+    }
+    const job = jobRunner.retry(id, targetStep);
     return Response.json({ jobId: job.id }, { status: 202 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Retry failed.";

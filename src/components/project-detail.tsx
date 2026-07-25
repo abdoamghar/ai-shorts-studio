@@ -16,6 +16,7 @@ import {
   ScissorsIcon,
   Trash2Icon,
   TriangleAlertIcon,
+  RotateCcwIcon,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -325,6 +326,23 @@ export function ProjectDetail({
             <span className="w-10 shrink-0 text-right tabular-nums text-xs text-muted-foreground">
               {job.progress}%
             </span>
+            {job.status === "succeeded" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto h-7 text-xs"
+                onClick={async () => {
+                  toast.success("Re-rendering subtitles...");
+                  await fetch(`/api/jobs/${job.id}/retry`, {
+                    method: "POST",
+                    body: JSON.stringify({ step: "subtitles" }),
+                    headers: { "Content-Type": "application/json" },
+                  });
+                }}
+              >
+                <RotateCcwIcon className="mr-1 size-3.5" /> Re-render subtitles
+              </Button>
+            ) : null}
           </div>
           {job.status === "failed" && job.error ? (
             <div className="border-t px-3 py-2 text-xs text-destructive">{job.error}</div>

@@ -47,6 +47,8 @@ export type RenderInput = {
   assPath: string;
   /** Absolute output .mp4 path. */
   outPath: string;
+  /** Framing style: "blur" (padded) or "crop" (fullscreen). */
+  framingStyle?: "blur" | "crop";
   /** Optional progress context (render step reports per-clip local 0-100). */
   job?: JobContext;
 };
@@ -82,23 +84,24 @@ export function renderClip(input: RenderInput): Promise<string> {
   const durationSec = Math.max(0.5, (input.endMs - input.startMs) / 1000).toFixed(3);
 
   // filter_complex:
-  //   [0:v] setpts (reset PTS so clip-relative subtitle timing works), then
-  //   split into the sharp foreground (scaled to fit 1080 wide) AND a blurred
-  //   background. The background is processed at quarter resolution
-  //   (270x480) — blur, dim, then upscale to 1080x1920 — because the blur
-  //   hides the upscaling. This is the dominant perf win.
-  //   NOTE: no `trim=` filter here — bounds come from `-ss`/`-t` (see header).
-  //   Subtitles are burned last so the karaoke highlight sits on top.
-  const filter = [
-    `[0:v]setpts=PTS-STARTPTS[clip]`,
-    `[clip]split=2[fg][bgsrc]`,
-    // Foreground: fit width 1080, keep AR.
-    `[fg]scale=1080:-2:force_original_aspect_ratio=decrease[fgscaled]`,
-    // Background: cover 270x480 (quarter of 1080x1920), blur, dim, upscale.
-    `[bgsrc]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=20:10,eq=brightness=-0.05:saturation=0.8,scale=1080:1920:flags=fast_bilinear[bg]`,
-    `[bg][fgscaled]overlay=(W-w)/2:(H-h)/2[base]`,
-    `[base]subtitles=${subsFilterArg}[v]`,
-  ].join(";");
+  // Branch based on framingStyle (blur vs crop).
+  const isCrop = input.framingStyle === "crop";
+  const filter = isCrop
+    ? [
+        `[0:v]setpts=PTS-STARTPTS[clip]`,
+        `[clip]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[base]`,
+        `[base]subtitles=${subsFilterArg}[v]`,
+      ].join(";")
+    : [
+        `[0:v]setpts=PTS-STARTPTS[clip]`,
+        `[clip]split=2[fg][bgsrc]`,
+        // Foreground: fit width 1080, keep AR.
+        `[fg]scale=1080:-2:force_original_aspect_ratio=decrease[fgscaled]`,
+        // Background: cover 270x480 (quarter of 1080x1920), blur, dim, upscale.
+        `[bgsrc]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=20:10,eq=brightness=-0.05:saturation=0.8,scale=1080:1920:flags=fast_bilinear[bg]`,
+        `[bg][fgscaled]overlay=(W-w)/2:(H-h)/2[base]`,
+        `[base]subtitles=${subsFilterArg}[v]`,
+      ].join(";");
 
   if (existsSync(input.outPath)) rmSync(input.outPath, { force: true });
 

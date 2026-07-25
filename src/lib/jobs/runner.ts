@@ -148,13 +148,13 @@ class JobRunner {
    * project+type, seeded with the failed job's last `step` as the resume point
    * so the pipeline doesn't redo completed steps (download/audio/transcribe).
    */
-  retry(jobId: string): Job {
+  retry(jobId: string, targetStep?: string): Job {
     const job = this.get(jobId);
     if (!job) throw new Error("Job not found.");
     return this.enqueue({
       projectId: job.projectId!,
       type: job.type as JobType,
-      restartFromStep: job.step ?? undefined,
+      restartFromStep: targetStep ?? job.step ?? undefined,
     });
   }
 

@@ -102,7 +102,9 @@ export function layoutBlock(
     Math.round(videoW * Math.min(0.95, Math.max(0.5, maxBlockWidthPct))),
     usable,
   );
-  const spacePx = Math.round(SPACE_EM * fontSize * 1.03);
+  const spacePx = Math.round((style.wordSpacingEm ?? SPACE_EM) * fontSize * 1.03);
+
+  const maxChars = style.maxChars ?? 30;
 
   // First pass: greedy fill onto up to `maxLines` lines. A single word that
   // alone exceeds the usable band still gets its own line (we never shrink the
@@ -115,7 +117,10 @@ export function layoutBlock(
   for (let i = 0; i < words.length; i++) {
     const wOnly = measureText(words[i].text, fontKey, fontSize, bold);
     const wWithSpace = wOnly + (cur.length === 0 ? 0 : spacePx);
-    const wouldOverflow = curWidth + wWithSpace > usable && cur.length > 0;
+    const curChars = cur.map(w => w.text).join(" ").length;
+    const charsWithNext = curChars > 0 ? curChars + 1 + words[i].text.length : words[i].text.length;
+    const wouldOverflow = cur.length > 0 && (curWidth + wWithSpace > usable || charsWithNext > maxChars);
+    
     if (wouldOverflow) {
       partitions.push(cur);
       // If that was the last allowed line, spill the rest onto it and stop —

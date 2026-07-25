@@ -123,10 +123,15 @@ export async function runSubtitles(ctx: JobContext): Promise<void> {
       for (const w of segWords) {
         if (w.endMs < clip.startMs || w.startMs > clip.endMs) continue;
         // Truncate word bounds to the clip window so subs don't overrun.
+        // Whisper sometimes stretches the last word of a segment into the silence
+        // that follows. Cap max word duration to 800ms so text disappears when 
+        // the speaker stops talking.
+        const startMs = Math.max(w.startMs, clip.startMs);
+        const endMs = Math.min(Math.min(w.endMs, startMs + 800), clip.endMs);
         words.push({
           text: w.text,
-          startMs: Math.max(w.startMs, clip.startMs),
-          endMs: Math.min(w.endMs, clip.endMs),
+          startMs,
+          endMs,
         });
       }
     }

@@ -85,10 +85,12 @@ export async function runDownload(ctx: JobContext, url: string): Promise<void> {
       "--no-playlist",
       "--newline", // one progress line per update so we can parse them
       "-f",
-      "bestvideo+bestaudio/best",
+      "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
       "--merge-output-format",
       "mp4",
       "--write-info-json",
+      "--concurrent-fragments",
+      "4",
       "-o",
       outTemplate,
       url,

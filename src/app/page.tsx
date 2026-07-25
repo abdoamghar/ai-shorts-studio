@@ -60,6 +60,7 @@ function fmtDuration(sec: number | null): string {
 export default function DashboardPage() {
   const router = useRouter();
   const [url, setUrl] = React.useState("");
+  const [framingStyle, setFramingStyle] = React.useState("blur");
   const [submitting, setSubmitting] = React.useState(false);
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [recent, setRecent] = React.useState<RecentProject[]>([]);
@@ -76,7 +77,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: trimmed }),
+        body: JSON.stringify({ url: trimmed, framingStyle }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -132,18 +133,31 @@ export default function DashboardPage() {
             Paste a YouTube URL. We&rsquo;ll transcribe it, find the best moments, burn in subtitles, and render vertical clips ready for TikTok, Shorts, and Reels.
           </p>
           <form className="flex gap-2" onSubmit={onAnalyze}>
-            <div className="relative flex-1">
-              <PlayCircleIcon className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                type="url"
-                inputMode="url"
-                placeholder="https://www.youtube.com/watch?v=..."
-                className="h-11 pl-10"
-                aria-label="YouTube video URL"
-                disabled={submitting}
-              />
+            <div className="flex flex-col gap-3">
+              <div className="relative flex-1">
+                <PlayCircleIcon className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  className="h-11 pl-10"
+                  aria-label="YouTube video URL"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={framingStyle}
+                  onChange={(e) => setFramingStyle(e.target.value)}
+                  className="h-11 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={submitting}
+                >
+                  <option value="blur">Blur Background (Gaming/Action)</option>
+                  <option value="crop">Full-Screen Crop (Podcast/Debates)</option>
+                </select>
+              </div>
             </div>
             <Button type="submit" size="lg" disabled={submitting}>
               {submitting ? <Loader2Icon className="animate-spin" /> : <ArrowRightIcon />}

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { projects, promptTemplates, transcript } from "@/lib/db/schema";
-import { chatJson, type ChatMessage } from "@/lib/llm/client";
+import { chatJson, type ChatMessage, type ChatJsonResult } from "@/lib/llm/client";
 import { buildClipPrompt } from "@/lib/llm/prompt";
 import {
   parseClipsResponse,
@@ -129,11 +129,62 @@ export async function runAnalyze(ctx: JobContext): Promise<void> {
     },
   });
 
+  // ── Pre-flight: quick API connectivity test ──────────────────────────
+  ctx.setProgress(5, "Testing API connection");
+  try {
+    await chatJson(
+      [{ role: "user", content: "Reply with: {\"ok\":true}" }],
+      { temperature: 0, maxTokens: 32 },
+    );
+    ctx.log("API connection test passed.");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown";
+    throw new Error(
+      `LLM API connection test failed before analysis: ${msg}. Check your API key and provider settings.`,
+    );
+  }
+
+  // ── Main LLM call with retry (up to 3 attempts on timeout/transient) ─
   ctx.setProgress(10, "Calling LLM");
-  const result = await chatJson([{ role: "user", content: prompt }], {
-    temperature: 0.4,
-    maxTokens: 8192,
-  });
+
+  const MAX_ATTEMPTS = 3;
+  let result: ChatJsonResult | null = null;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      ctx.log(attempt > 1 ? `LLM attempt ${attempt}/${MAX_ATTEMPTS}…` : "Sending analysis prompt to LLM…");
+      result = await chatJson([{ role: "user", content: prompt }], {
+        temperature: 0.4,
+        maxTokens: 8192,
+      });
+      break; // success
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const isTimeout = lastError.message.toLowerCase().includes("timed out");
+      const isTransient =
+        isTimeout ||
+        lastError.message.toLowerCase().includes("429") ||
+        lastError.message.toLowerCase().includes("500") ||
+        lastError.message.toLowerCase().includes("502") ||
+        lastError.message.toLowerCase().includes("503") ||
+        lastError.message.toLowerCase().includes("504");
+
+      if (!isTransient || attempt === MAX_ATTEMPTS) {
+        ctx.log(`LLM failed (attempt ${attempt}/${MAX_ATTEMPTS}): ${lastError.message}`, "error");
+        throw lastError;
+      }
+
+      const delaySec = attempt * 5; // 5s, 10s backoff
+      ctx.log(
+        `LLM attempt ${attempt} failed (${isTimeout ? "timeout" : "transient error"}). Retrying in ${delaySec}s…`,
+        "warn",
+      );
+      await new Promise((r) => setTimeout(r, delaySec * 1000));
+    }
+  }
+
+  if (!result) throw lastError ?? new Error("LLM call failed after all retries.");
 
   let candidates = parseClipsResponse(result.json);
   if (result.usage?.promptTokens) {
