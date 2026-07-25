@@ -121,6 +121,13 @@ function roundedRectDrawing(w: number, h: number, radius: number): string {
   // BR arc (0°->90°) -> bottom edge -> BL arc (90°->180°) -> left edge ->
   // TL arc (180°->270°) -> close. Top edge starts at the end of the TL arc
   // so we begin the `m` there.
+  //
+  // NOTE: the tags MUST be emitted as literal `\p1` and `\p` on disk for
+  // libass to enter/leave vector-drawing mode. In a JS template literal a
+  // single `\p` is an unrecognized escape and the backslash is STRIPPED
+  // (yielding `{p1}`), which libass then renders as literal text — the
+  // drawing path digits appear on screen. Use `\\p` so the runtime string
+  // keeps the single backslash libass requires.
   let path = `m ${rnd(-hw + r)} ${rnd(-hh)}`;
   path += ` l ${rnd(hw - r)} ${rnd(-hh)}`; // top edge
   path += arc(hw - r, -hh + r, 270, 360); // TR
@@ -130,7 +137,7 @@ function roundedRectDrawing(w: number, h: number, radius: number): string {
   path += arc(-hw + r, hh - r, 90, 180); // BL
   path += ` l ${rnd(-hw)} ${rnd(-hh + r)}`; // left edge
   path += arc(-hw + r, -hh + r, 180, 270); // TL
-  return `{\p1}${path}{\p}`;
+  return `{\\p1}${path}{\\p}`;
 }
 
 /**
