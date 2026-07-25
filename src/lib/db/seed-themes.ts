@@ -7,10 +7,11 @@ import { BUILTIN_THEMES } from "@/lib/subtitles/themes";
 
 /**
  * Idempotently seed (and refresh) the builtin subtitle themes so they always
- * exist. Strategy mirrors the prompt-templates seed: upsert on the stable
- * `presetKey`. On conflict we refresh name (and keep isBuiltin true); we do
- * NOT overwrite a user's edited styleJson — once a user tweaks a builtin's
- * style in the editor we preserve their version across app updates.
+ * exist. Upsert on the stable `id` (= the preset key). On conflict we refresh
+ * name, isBuiltin, AND styleJson — builtin themes are read-only in the UI
+ * (the editor only exposes Preview/Clone for builtins), so overwriting their
+ * styleJson across app updates is safe and is how we migrate builtins to the
+ * v2 premium schema. User-owned clones have their own `id` and are untouched.
  * Call once at boot from instrumentation.
  */
 export function seedBuiltinThemes(): {
@@ -38,6 +39,7 @@ export function seedBuiltinThemes(): {
         set: {
           name: t.name,
           isBuiltin: true,
+          styleJson: JSON.stringify(t.styleJson),
         },
       })
       .run();

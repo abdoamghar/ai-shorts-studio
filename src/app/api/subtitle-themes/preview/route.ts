@@ -15,15 +15,27 @@ export const dynamic = "force-dynamic";
 
 const StyleJsonBody = z.object({
   font: z.string().min(1).max(80),
+  fontMetricsKey: z.string().max(40).optional(),
   fontSize: z.number().int().min(20).max(200),
   primaryHsl: z.tuple([z.number(), z.number(), z.number()]),
   outlineHsl: z.tuple([z.number(), z.number(), z.number()]),
   outline: z.number().min(0).max(40),
   shadow: z.number().min(0).max(40),
   bold: z.number().min(-1).max(1),
-  alignment: z.number().int().min(1).max(9),
-  marginL: z.number().int().min(0).max(400),
-  marginV: z.number().int().min(0).max(960),
+  // v2 layout fields (optional with app defaults applied downstream).
+  anchorY: z.number().min(0.1).max(0.95).optional(),
+  safeMarginPct: z.number().min(0).max(0.45).optional(),
+  maxBlockWidthPct: z.number().min(0.5).max(0.95).optional(),
+  lineHeight: z.number().min(0.8).max(1.4).optional(),
+  highlightPaddingX: z.number().min(0).max(80).optional(),
+  highlightPaddingY: z.number().min(0).max(80).optional(),
+  highlightRadius: z.number().min(0).max(80).optional(),
+  highlightOpacity: z.number().min(0).max(1).optional(),
+  // [back-compat] Legacy fields — accepted so old DB rows / older clients still
+  // POST cleanly; the v2 layout ignores them (except marginV's small nudge).
+  alignment: z.number().int().min(1).max(9).optional(),
+  marginL: z.number().int().min(0).max(400).optional(),
+  marginV: z.number().int().min(0).max(960).optional(),
   highlightHsl: z.tuple([z.number(), z.number(), z.number()]),
   animationSpeed: z.number().min(0.1).max(4),
   maxChars: z.number().int().min(8).max(80),
@@ -32,11 +44,11 @@ const StyleJsonBody = z.object({
 
 const Body = z.object({
   styleJson: StyleJsonBody,
-  /** Optional sample line to render. */
-  sample: z.string().min(1).max(140).optional(),
+  /** Optional sample line to render. A longer default shows wrap/balance. */
+  sample: z.string().min(1).max(200).optional(),
 });
 
-const DEFAULT_SAMPLE = "This is what your subtitle looks like";
+const DEFAULT_SAMPLE = "THEY KNOW WHO I AM AND THEY KNOW WHAT I DID";
 
 function hslToHex([h, s, l]: [number, number, number]): string {
   const c = (1 - Math.abs(2 * l - 1)) * s;

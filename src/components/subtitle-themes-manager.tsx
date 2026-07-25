@@ -49,17 +49,23 @@ type EditorState = {
 
 const DEFAULT_STYLE: StyleJson = {
   font: "Inter",
+  fontMetricsKey: "inter-bold",
   fontSize: 82,
   primaryHsl: [0, 0, 1],
   outlineHsl: [0, 0, 0],
   outline: 10,
   shadow: 0,
   bold: 1,
-  alignment: 8,
-  marginL: 80,
-  marginV: 120,
+  anchorY: 0.66,
+  safeMarginPct: 0.09,
+  maxBlockWidthPct: 0.82,
+  lineHeight: 1.0,
   highlightHsl: [42, 1, 0.55],
   animationSpeed: 1,
+  highlightPaddingX: 14,
+  highlightPaddingY: 8,
+  highlightRadius: 18,
+  highlightOpacity: 1,
   maxChars: 22,
   maxLines: 2,
 };
@@ -439,14 +445,10 @@ function EditorDialog(props: {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="th-bold">Bold</Label>
                 <Input id="th-bold" type="number" min={-1} max={1} value={s.bold} onChange={(e) => setStyle({ bold: Number(e.target.value) })} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="th-align">Alignment (1-9)</Label>
-                <Input id="th-align" type="number" min={1} max={9} value={s.alignment} onChange={(e) => setStyle({ alignment: Number(e.target.value) })} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="th-speed">Animation speed</Label>
@@ -454,25 +456,55 @@ function EditorDialog(props: {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="th-ml">Margin L</Label>
-                <Input id="th-ml" type="number" min={0} max={400} value={s.marginL} onChange={(e) => setStyle({ marginL: Number(e.target.value) })} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="th-mv">Margin V</Label>
-                <Input id="th-mv" type="number" min={0} max={960} value={s.marginV} onChange={(e) => setStyle({ marginV: Number(e.target.value) })} />
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Layout</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-anchor">Anchor Y (0-1)</Label>
+                  <Input id="th-anchor" type="number" min={0.1} max={0.95} step={0.01} value={s.anchorY ?? 0.65} onChange={(e) => setStyle({ anchorY: Number(e.target.value) })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-margin">Safe margin % (each side)</Label>
+                  <Input id="th-margin" type="number" min={0} max={0.2} step={0.01} value={s.safeMarginPct ?? 0.09} onChange={(e) => setStyle({ safeMarginPct: Number(e.target.value) })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-blockw">Max block width %</Label>
+                  <Input id="th-blockw" type="number" min={0.5} max={0.95} step={0.01} value={s.maxBlockWidthPct ?? 0.82} onChange={(e) => setStyle({ maxBlockWidthPct: Number(e.target.value) })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-lh">Line height</Label>
+                  <Input id="th-lh" type="number" min={0.8} max={1.4} step={0.05} value={s.lineHeight ?? 1.0} onChange={(e) => setStyle({ lineHeight: Number(e.target.value) })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-mc">Max chars/line (SRT only)</Label>
+                  <Input id="th-mc" type="number" min={8} max={80} value={s.maxChars} onChange={(e) => setStyle({ maxChars: Number(e.target.value) })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-mn">Max lines (≤3)</Label>
+                  <Input id="th-mn" type="number" min={1} max={3} value={s.maxLines} onChange={(e) => setStyle({ maxLines: Number(e.target.value) })} />
+                </div>
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="th-mc">Max chars/line</Label>
-                <Input id="th-mc" type="number" min={8} max={80} value={s.maxChars} onChange={(e) => setStyle({ maxChars: Number(e.target.value) })} />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="th-mn">Max lines</Label>
-                <Input id="th-mn" type="number" min={1} max={5} value={s.maxLines} onChange={(e) => setStyle({ maxLines: Number(e.target.value) })} />
+            <div className="space-y-3 rounded-lg border border-border p-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Highlight box</div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-hpx">Padding X (px)</Label>
+                  <Input id="th-hpx" type="number" min={0} max={80} value={s.highlightPaddingX ?? 12} onChange={(e) => setStyle({ highlightPaddingX: Number(e.target.value) })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-hpy">Padding Y (px)</Label>
+                  <Input id="th-hpy" type="number" min={0} max={80} value={s.highlightPaddingY ?? 6} onChange={(e) => setStyle({ highlightPaddingY: Number(e.target.value) })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-hr">Corner radius (px)</Label>
+                  <Input id="th-hr" type="number" min={0} max={80} value={s.highlightRadius ?? 16} onChange={(e) => setStyle({ highlightRadius: Number(e.target.value) })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="th-hop">Fill opacity (0-1)</Label>
+                  <Input id="th-hop" type="number" min={0} max={1} step={0.05} value={s.highlightOpacity ?? 1} onChange={(e) => setStyle({ highlightOpacity: Number(e.target.value) })} />
+                </div>
               </div>
             </div>
           </div>
@@ -481,7 +513,8 @@ function EditorDialog(props: {
             <Label>Live preview</Label>
             <ThemePreview styleJson={s} sample={state.sample} />
             <p className="text-xs text-muted-foreground">
-              Rendered at 1080×1920 with the sample line, karaoke highlight on the active word.
+              Rendered at 1080×1920. The subtitle block is centered with safe margins; the
+              rounded highlight box snaps to the currently-spoken word as it plays.
             </p>
           </div>
         </div>
