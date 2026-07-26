@@ -37,7 +37,10 @@ type ProjectClipSettings = {
 
 const DEFAULT_TARGET_CLIP_SEC = 30;
 
+import { readGeneralSettings } from "@/lib/settings/store";
+
 function readSettings(project: { settingsJson: string | null }): ProjectClipSettings {
+  const generalSettings = readGeneralSettings();
   const raw = project.settingsJson ?? "{}";
   let parsed: Record<string, unknown> = {};
   try {
@@ -52,7 +55,7 @@ function readSettings(project: { settingsJson: string | null }): ProjectClipSett
   const maxClips =
     typeof parsed.maxClips === "number" && (parsed.maxClips as number) > 0
       ? (parsed.maxClips as number)
-      : null;
+      : generalSettings.maxClips;
   const promptTemplateKey =
     typeof parsed.promptTemplateKey === "string" && parsed.promptTemplateKey
       ? parsed.promptTemplateKey

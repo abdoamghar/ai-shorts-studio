@@ -34,9 +34,12 @@ export type WhisperSettings = {
   modelDir?: string;
 };
 
+import { readGeneralSettings } from "@/lib/settings/store";
+
 const VALID_MODELS = new Set(["tiny", "base", "small", "medium", "large", "large-v3"]);
 
 function readWhisperSettings(projectId: string): WhisperSettings {
+  const generalSettings = readGeneralSettings();
   const row = db.select().from(projects).where(eq(projects.id, projectId)).get();
   let parsed: Record<string, unknown> = {};
   try {
@@ -44,8 +47,8 @@ function readWhisperSettings(projectId: string): WhisperSettings {
   } catch {
     parsed = {};
   }
-  const modelRaw = (parsed.whisperModel as string) ?? process.env.WHISPER_MODEL ?? "base";
-  const model = VALID_MODELS.has(modelRaw) ? modelRaw : "base";
+  const modelRaw = (parsed.whisperModel as string) ?? generalSettings.whisperModel;
+  const model = VALID_MODELS.has(modelRaw) ? modelRaw : generalSettings.whisperModel;
   const languageRaw =
     (parsed.language as string) ?? process.env.WHISPER_LANGUAGE ?? "auto";
   const modelDir = (parsed.whisperModelDir as string) ?? process.env.WHISPER_MODEL_DIR;

@@ -30,7 +30,10 @@ function clipFileBase(idx: number): string {
   return `clip_${idx.toString().padStart(2, "0")}`;
 }
 
+import { readGeneralSettings } from "@/lib/settings/store";
+
 function readTheme(project: { settingsJson: string | null }): StyleJson {
+  const generalSettings = readGeneralSettings();
   const raw = project.settingsJson ?? "{}";
   let parsed: Record<string, unknown> = {};
   try {
@@ -38,7 +41,7 @@ function readTheme(project: { settingsJson: string | null }): StyleJson {
   } catch {
     parsed = {};
   }
-  const themeId = (parsed.subtitleThemeId as string) ?? DEFAULT_THEME_KEY;
+  const themeId = (parsed.subtitleThemeId as string) ?? generalSettings.defaultSubtitleThemeId;
   const row = db
     .select({ styleJson: subtitleThemes.styleJson })
     .from(subtitleThemes)

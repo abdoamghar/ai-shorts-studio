@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 
-import { resolveFfmpeg } from "@/lib/binaries";
+import { resolveFfmpeg, resolvePython } from "@/lib/binaries";
 import { projectDir } from "@/lib/storage/paths";
 import { videoPath } from "@/lib/pipeline/download";
 import type { JobContext } from "@/lib/jobs/runner";
@@ -39,17 +39,11 @@ import type { JobContext } from "@/lib/jobs/runner";
 
 export type RenderInput = {
   projectId: string;
-  /** Source-absolute clip start, ms. */
   startMs: number;
-  /** Source-absolute clip end, ms. */
   endMs: number;
-  /** Absolute path to the .ass file (we convert to a project-relative path). */
   assPath: string;
-  /** Absolute output .mp4 path. */
   outPath: string;
-  /** Framing style: "blur" (padded) or "crop" (fullscreen). */
-  framingStyle?: "blur" | "crop";
-  /** Optional progress context (render step reports per-clip local 0-100). */
+  framingStyle?: "blur" | "crop" | "auto-crop";
   job?: JobContext;
 };
 
@@ -63,41 +57,78 @@ function fmtTime(ms: number): string {
   return `${pad(h)}:${pad(m)}:${s.toFixed(3).padStart(6, "0")}`;
 }
 
+async function runFaceTracker(input: RenderInput, cwd: string): Promise<string | null> {
+  const py = resolvePython();
+  const scriptPath = path.resolve(process.cwd(), "scripts/track_face.py");
+  const outCmd = input.outPath.replace(/\.mp4$/i, ".cmd");
+  
+  if (!existsSync(scriptPath)) return null;
+
+  return new Promise((resolve) => {
+    input.job?.log("Tracking face for auto-crop...");
+    const p = spawn(
+      py,
+      [
+        scriptPath,
+        "--input",
+        videoPath(input.projectId),
+        "--start",
+        (input.startMs / 1000).toFixed(3),
+        "--end",
+        (input.endMs / 1000).toFixed(3),
+        "--out",
+        outCmd,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+
+    p.on("close", (code) => {
+      if (code === 0 && existsSync(outCmd)) {
+        // Return project-relative path
+        resolve(path.relative(cwd, outCmd).split(path.sep).join("/"));
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
 /** Render a single clip. Resolves to the output path on success. */
-export function renderClip(input: RenderInput): Promise<string> {
+export async function renderClip(input: RenderInput): Promise<string> {
   const ffmpeg = resolveFfmpeg();
   const src = videoPath(input.projectId);
   if (!existsSync(src)) {
-    return Promise.reject(new Error(`Source video missing for render: ${src}`));
+    throw new Error(`Source video missing for render: ${src}`);
   }
   if (!existsSync(input.assPath)) {
-    return Promise.reject(new Error(`Subtitle file missing for render: ${input.assPath}`));
+    throw new Error(`Subtitle file missing for render: ${input.assPath}`);
   }
 
-  // Build a project-relative subs path with forward slashes for the filter.
   const cwd = projectDir(input.projectId);
   const relAss = path.relative(cwd, input.assPath).split(path.sep).join("/");
-  // Escape backslashes/colons for the filtergraph string; forward slashes are safe.
-  // The path itself is relative so no drive-letter colon is present.
   const subsFilterArg = relAss.replace(/\\/g, "/").replace(/:/g, "\\:");
+
+  let sendCmdFilter = "";
+  if (input.framingStyle === "auto-crop") {
+    const cmdPath = await runFaceTracker(input, cwd);
+    if (cmdPath) {
+      sendCmdFilter = `sendcmd=f='${cmdPath}',`;
+    }
+  }
 
   const durationSec = Math.max(0.5, (input.endMs - input.startMs) / 1000).toFixed(3);
 
-  // filter_complex:
-  // Branch based on framingStyle (blur vs crop).
-  const isCrop = input.framingStyle === "crop";
+  const isCrop = input.framingStyle === "crop" || input.framingStyle === "auto-crop";
   const filter = isCrop
     ? [
         `[0:v]setpts=PTS-STARTPTS[clip]`,
-        `[clip]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[base]`,
+        `[clip]scale=1080:1920:force_original_aspect_ratio=increase,${sendCmdFilter}crop=1080:1920[base]`,
         `[base]subtitles=${subsFilterArg}[v]`,
       ].join(";")
     : [
         `[0:v]setpts=PTS-STARTPTS[clip]`,
         `[clip]split=2[fg][bgsrc]`,
-        // Foreground: fit width 1080, keep AR.
         `[fg]scale=1080:-2:force_original_aspect_ratio=decrease[fgscaled]`,
-        // Background: cover 270x480 (quarter of 1080x1920), blur, dim, upscale.
         `[bgsrc]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=20:10,eq=brightness=-0.05:saturation=0.8,scale=1080:1920:flags=fast_bilinear[bg]`,
         `[bg][fgscaled]overlay=(W-w)/2:(H-h)/2[base]`,
         `[base]subtitles=${subsFilterArg}[v]`,

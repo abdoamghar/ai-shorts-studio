@@ -56,7 +56,7 @@ export async function GET() {
 
 const Body = z.object({
   url: z.string().trim().min(1, "URL is required."),
-  framingStyle: z.enum(["blur", "crop"]).optional(),
+  framingStyle: z.enum(["blur", "crop", "auto-crop"]).optional(),
 });
 
 /** Extract the 11-char YouTube video id from any standard URL form. */

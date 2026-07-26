@@ -99,13 +99,17 @@ export default function DashboardPage() {
     void loadDashboard();
     async function loadDashboard() {
       try {
-        const [sr, pr] = await Promise.all([
+        const [sr, pr, gs] = await Promise.all([
           fetch("/api/stats", { cache: "no-store" }).then((r) => r.json() as Promise<{ stats: Stats }>),
           fetch("/api/projects", { cache: "no-store" }).then((r) => r.json() as Promise<{ projects: RecentProject[] }>),
+          fetch("/api/settings/general", { cache: "no-store" }).then((r) => r.json() as Promise<{ defaultFramingStyle?: string }>).catch(() => ({})),
         ]);
         if (!cancelled) {
           setStats(sr.stats);
           setRecent((pr.projects ?? []).slice(0, 6));
+          if ((gs as { defaultFramingStyle?: string }).defaultFramingStyle) {
+            setFramingStyle((gs as { defaultFramingStyle?: string }).defaultFramingStyle!);
+          }
         }
       } catch {
         /* keep empties; tiles/cards fall back to dashes */
@@ -156,6 +160,7 @@ export default function DashboardPage() {
                 >
                   <option value="blur">Blur Background (Gaming/Action)</option>
                   <option value="crop">Full-Screen Crop (Podcast/Debates)</option>
+                  <option value="auto-crop">Auto-Crop (Face Tracking)</option>
                 </select>
               </div>
             </div>

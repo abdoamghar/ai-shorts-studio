@@ -66,11 +66,12 @@ export async function runRender(ctx: JobContext): Promise<void> {
         
         const outPath = clipRenderPath(ctx.projectId, clip.idx);
 
-        let framingStyle: "blur" | "crop" = "blur";
+        let framingStyle: "blur" | "crop" | "auto-crop" = "blur";
         try {
           if (project.settingsJson) {
             const parsed = JSON.parse(project.settingsJson);
             if (parsed.framingStyle === "crop") framingStyle = "crop";
+            if (parsed.framingStyle === "auto-crop") framingStyle = "auto-crop";
           }
         } catch {
           // ignore

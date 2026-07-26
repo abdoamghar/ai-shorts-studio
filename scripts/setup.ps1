@@ -63,15 +63,15 @@ if (-not $SkipWhisper) {
   } else {
     Write-Host "    python: $((python --version 2>&1 | Out-String).Trim())" -ForegroundColor DarkGray
     $installed = $null
-    try { $installed = (python -c "import faster_whisper; print('yes')" 2>&1 | Out-String).Trim() } catch { $installed = $null }
+    try { $installed = (python -c "import faster_whisper; import mediapipe; import cv2; print('yes')" 2>&1 | Out-String).Trim() } catch { $installed = $null }
     if ($installed -eq "yes") {
-      Write-Ok "faster-whisper already installed"
+      Write-Ok "faster-whisper and tracking dependencies already installed"
     } else {
       Write-Host "    pip install faster-whisper..." -ForegroundColor DarkGray
-      try { python -m pip install --upgrade faster-whisper 2>&1 | Out-Host } catch { Write-Err "pip install raised: $_" }
-      try { $installed = (python -c "import faster_whisper; print('yes')" 2>&1 | Out-String).Trim() } catch { $installed = $null }
-      if ($installed -eq "yes") { Write-Ok "faster-whisper installed" }
-      else { Write-Err "faster-whisper import check failed" }
+      try { python -m pip install --upgrade faster-whisper mediapipe opencv-python 2>&1 | Out-Host } catch { Write-Err "pip install raised: $_" }
+      try { $installed = (python -c "import faster_whisper; import mediapipe; import cv2; print('yes')" 2>&1 | Out-String).Trim() } catch { $installed = $null }
+      if ($installed -eq "yes") { Write-Ok "faster-whisper and tracking dependencies installed" }
+      else { Write-Err "python dependencies import check failed" }
     }
   }
 } else {

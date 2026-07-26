@@ -20,6 +20,23 @@ import { PROVIDER_PRESET_BY_ID, type ProviderId } from "@/lib/llm/providers";
  */
 
 const LLM_SETTINGS_KEY = "llm";
+const GENERAL_SETTINGS_KEY = "general";
+
+export const GeneralSettingsSchema = z.object({
+  whisperModel: z.enum(["tiny", "base", "small", "medium", "large", "large-v3"]).default("base"),
+  maxClips: z.number().int().min(1).max(20).default(5),
+  defaultSubtitleThemeId: z.string().default("theme-system"),
+  defaultFramingStyle: z.enum(["blur", "crop", "auto-crop"]).default("blur"),
+});
+
+export type GeneralSettings = z.infer<typeof GeneralSettingsSchema>;
+
+export const EMPTY_GENERAL_SETTINGS: GeneralSettings = {
+  whisperModel: "base",
+  maxClips: 5,
+  defaultSubtitleThemeId: "theme-system",
+  defaultFramingStyle: "blur",
+};
 
 export const LlmSettingsSchema = z.object({
   providerId: z.string().min(1).catch("openai") as z.ZodType<ProviderId>,
@@ -93,6 +110,41 @@ export function writeLlmSettings(input: Partial<LlmSettings>): void {
   const { valueEnc, iv, tag } = encryptString(JSON.stringify(merged));
   db.insert(settings)
     .values({ key: LLM_SETTINGS_KEY, valueEnc, iv, tag, updatedAt: new Date().toISOString() })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { valueEnc, iv, tag, updatedAt: new Date().toISOString() },
+    })
+    .run();
+}
+
+/** Read the General group */
+export function readGeneralSettings(): GeneralSettings {
+  const row = db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, GENERAL_SETTINGS_KEY))
+    .get();
+  if (!row) return { ...EMPTY_GENERAL_SETTINGS };
+
+  const json = decryptString(row.valueEnc, row.iv, row.tag);
+  const parsed = z.safeParse(GeneralSettingsSchema, safeJson(json));
+  if (!parsed.success) return { ...EMPTY_GENERAL_SETTINGS };
+  return parsed.data;
+}
+
+/** Write the General group */
+export function writeGeneralSettings(input: Partial<GeneralSettings>): void {
+  const prev = readGeneralSettings();
+  const merged = GeneralSettingsSchema.parse({
+    whisperModel: input.whisperModel ?? prev.whisperModel,
+    maxClips: input.maxClips ?? prev.maxClips,
+    defaultSubtitleThemeId: input.defaultSubtitleThemeId ?? prev.defaultSubtitleThemeId,
+    defaultFramingStyle: input.defaultFramingStyle ?? prev.defaultFramingStyle,
+  });
+  
+  const { valueEnc, iv, tag } = encryptString(JSON.stringify(merged));
+  db.insert(settings)
+    .values({ key: GENERAL_SETTINGS_KEY, valueEnc, iv, tag, updatedAt: new Date().toISOString() })
     .onConflictDoUpdate({
       target: settings.key,
       set: { valueEnc, iv, tag, updatedAt: new Date().toISOString() },
