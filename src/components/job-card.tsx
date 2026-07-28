@@ -35,6 +35,7 @@ export type JobListEntry = {
   projectTitle: string | null;
   projectVideoId: string | null;
   projectThumbnailUrl: string | null;
+  subtitleLanguage?: "en" | "ar";
 };
 
 type StreamEvent =
@@ -98,9 +99,12 @@ const STATUS_META: Record<
 export function JobCard({
   job,
   onDeleted,
+  onRetried,
 }: {
   job: JobListEntry;
   onDeleted?: (jobId: string) => void;
+  /** Called with the new job id after a successful retry re-queue. */
+  onRetried?: (newJobId: string, oldJobId: string) => void;
 }) {
   const [status, setStatus] = React.useState<JobListEntry["status"]>(job.status);
   const [progress, setProgress] = React.useState<number>(job.progress);
@@ -146,6 +150,41 @@ export function JobCard({
     logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [logs.length]);
 
+  // Seed stored logs for terminal jobs (SSE is skipped when already finished).
+  React.useEffect(() => {
+    if (
+      job.status !== "succeeded" &&
+      job.status !== "failed" &&
+      job.status !== "cancelled"
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          logs?: Array<{ ts: string; level: string; message: string; step: string | null }>;
+        };
+        if (cancelled || !body.logs?.length) return;
+        setLogs(
+          body.logs.map((l) => ({
+            ts: Date.parse(l.ts) || Date.now(),
+            level: l.level,
+            message: l.message,
+            step: l.step ?? undefined,
+          })),
+        );
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [job.id, job.status]);
+
   React.useEffect(() => {
     // Terminal jobs are seeded once; no SSE stream needed.
     if (job.status === "succeeded" || job.status === "failed" || job.status === "cancelled") {
@@ -170,12 +209,22 @@ export function JobCard({
   async function onRetry() {
     setRetrying(true);
     try {
-      const res = await fetch(`/api/jobs/${job.id}/retry`, { method: "POST" });
+      const res = await fetch(`/api/jobs/${job.id}/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { jobId?: string; error?: string }
+        | null;
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? "Retry failed.");
       }
-      toast.success("Re-queued job for analysis.");
+      if (!body?.jobId) {
+        throw new Error("Retry did not return a new job id.");
+      }
+      toast.success("Re-queued. Resuming from the failed step.");
+      onRetried?.(body.jobId, job.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Retry failed.");
     } finally {
@@ -223,6 +272,9 @@ export function JobCard({
             <Badge variant={meta.variant} className="gap-1">
               {meta.icon}
               {meta.label}
+            </Badge>
+            <Badge variant="secondary" className="text-[10px]">
+              {(job.subtitleLanguage ?? "en") === "ar" ? "AR" : "EN"}
             </Badge>
             <span className="truncate text-sm font-medium">
               {job.projectTitle ?? job.projectUrl ?? "Unknown video"}

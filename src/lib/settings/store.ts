@@ -27,6 +27,16 @@ export const GeneralSettingsSchema = z.object({
   maxClips: z.number().int().min(1).max(20).default(5),
   defaultSubtitleThemeId: z.string().default("theme-system"),
   defaultFramingStyle: z.enum(["blur", "crop", "auto-crop"]).default("blur"),
+  defaultSubtitleLanguage: z.enum(["en", "ar"]).default("en"),
+  /**
+   * Arabic path only. When true (default) every word carries a dark ghost
+   * pill behind it for the whole block window — the viral TikTok look. When
+   * false, the ghost pills are suppressed and only the active word's colored
+   * highlight pill draws; inactive words render as plain white text (with a
+   * thin outline for legibility, added inside buildAssArabic). The active
+   * word's green/violet highlight and per-word timing are never affected.
+   */
+  arabicShowInactiveWordPills: z.boolean().default(true),
 });
 
 export type GeneralSettings = z.infer<typeof GeneralSettingsSchema>;
@@ -36,6 +46,8 @@ export const EMPTY_GENERAL_SETTINGS: GeneralSettings = {
   maxClips: 5,
   defaultSubtitleThemeId: "theme-system",
   defaultFramingStyle: "blur",
+  defaultSubtitleLanguage: "en",
+  arabicShowInactiveWordPills: true,
 };
 
 export const LlmSettingsSchema = z.object({
@@ -140,6 +152,10 @@ export function writeGeneralSettings(input: Partial<GeneralSettings>): void {
     maxClips: input.maxClips ?? prev.maxClips,
     defaultSubtitleThemeId: input.defaultSubtitleThemeId ?? prev.defaultSubtitleThemeId,
     defaultFramingStyle: input.defaultFramingStyle ?? prev.defaultFramingStyle,
+    defaultSubtitleLanguage:
+      input.defaultSubtitleLanguage ?? prev.defaultSubtitleLanguage,
+    arabicShowInactiveWordPills:
+      input.arabicShowInactiveWordPills ?? prev.arabicShowInactiveWordPills,
   });
   
   const { valueEnc, iv, tag } = encryptString(JSON.stringify(merged));

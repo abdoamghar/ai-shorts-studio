@@ -51,6 +51,10 @@ if (!globalForDb.__shortsDrizzle) globalForDb.__shortsDrizzle = db;
 export function applySchema(): void {
   rawDb.exec(SCHEMA_SQL);
   ensureColumn("jobs", "restart_from_step", "TEXT");
+  ensureColumn("clips", "title_ar", "TEXT");
+  ensureColumn("clips", "hook_ar", "TEXT");
+  ensureColumn("clips", "summary_ar", "TEXT");
+  ensureColumn("clips", "hashtags_ar_json", "TEXT NOT NULL DEFAULT '[]'");
 }
 
 /**
@@ -113,6 +117,10 @@ CREATE TABLE IF NOT EXISTS clips (
   overall_score REAL,
   hashtags_json TEXT NOT NULL DEFAULT '[]',
   keywords_json TEXT NOT NULL DEFAULT '[]',
+  title_ar TEXT,
+  hook_ar TEXT,
+  summary_ar TEXT,
+  hashtags_ar_json TEXT NOT NULL DEFAULT '[]',
   start_word_idx INTEGER,
   end_word_idx INTEGER,
   thumbnail_path TEXT,

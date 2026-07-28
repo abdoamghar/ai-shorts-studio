@@ -12,6 +12,9 @@ import { buildLines, type ClipWord } from "@/lib/subtitles/lines";
 import { DEFAULT_THEME_KEY } from "@/lib/subtitles/themes";
 import type { StyleJson } from "@/lib/subtitles/themes";
 import type { JobContext } from "@/lib/jobs/runner";
+import { readGeneralSettings } from "@/lib/settings/store";
+import { readSubtitleLanguage } from "@/lib/subtitles/language";
+import { runArabicSubtitles } from "@/lib/pipeline/subtitles-ar";
 
 /**
  * Step 5 — generate per-clip subtitle files (SRT + ASS) from the transcript.
@@ -30,7 +33,6 @@ function clipFileBase(idx: number): string {
   return `clip_${idx.toString().padStart(2, "0")}`;
 }
 
-import { readGeneralSettings } from "@/lib/settings/store";
 
 function readTheme(project: { settingsJson: string | null }): StyleJson {
   const generalSettings = readGeneralSettings();
@@ -87,10 +89,15 @@ function readTheme(project: { settingsJson: string | null }): StyleJson {
 }
 
 export async function runSubtitles(ctx: JobContext): Promise<void> {
-  ctx.log("Generating per-clip subtitles (SRT + ASS).");
-
   const project = db.select().from(projects).where(eq(projects.id, ctx.projectId)).get();
   if (!project) throw new Error(`Project ${ctx.projectId} not found.`);
+
+  // Parallel Arabic path — English karaoke below stays untouched when language is en.
+  if (readSubtitleLanguage(project.settingsJson) === "ar") {
+    return runArabicSubtitles(ctx);
+  }
+
+  ctx.log("Generating per-clip subtitles (SRT + ASS).");
 
   const style = readTheme(project);
   const clips = db

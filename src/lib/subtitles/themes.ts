@@ -105,12 +105,41 @@ export type StyleJson = {
   uppercase?: boolean;
   /** Em-width space between words. Defaults to 0.278. Increase for wider gaps. */
   wordSpacingEm?: number;
+  /**
+   * Layout direction for per-word pill geometry. `"rtl"` flips word x-offsets
+   * so karaoke boxes track Arabic (and other RTL) reading order. Default
+   * `"ltr"` keeps the English path unchanged.
+   */
+  direction?: "ltr" | "rtl";
+
+  /**
+   * Target script/language for the theme. `"en"` = English (default), `"ar"` =
+   * Arabic. The Subtitle Themes manager filters by this field; the renderer
+   * picks an Arabic-flagged theme when `subtitleLanguage` = `"ar"`. Untagged
+   * or unknown = assumed English (serves as a safe default for user-created
+   * themes that predate this field).
+   */
+  language?: "en" | "ar";
+
+  /**
+   * Arabic path only. Carries the "Show inactive word pills" flag inline on a
+   * client-posted theme (e.g. the Subtitle Themes preview route threads the
+   * global General Settings toggle here so the preview frame matches the burn).
+   * The renderer (pipeline/subtitles-ar.ts) overrides this with the live
+   * General Settings value before calling buildAssArabic — i.e. the global
+   * toggle is the single source of truth at render time, but a posted theme
+   * can still *preview* the off state without persisting a settings change.
+   * Default undefined -> buildAssArabic's own default (true) applies.
+   */
+  showInactiveWordPills?: boolean;
 };
 
 export type BuiltinTheme = {
   key: string;
   name: string;
   presetKey: string;
+  /** "en" | "ar" — builtins are tagged so the manager can filter by script. */
+  language: "en" | "ar";
   styleJson: StyleJson;
 };
 
@@ -141,6 +170,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
     key: "viral",
     name: "Viral (Word Pills)",
     presetKey: "viral",
+    language: "en",
     styleJson: {
       font: "Arial",
       fontMetricsKey: "arial-bold",
@@ -168,16 +198,18 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
       maxLines: 2,
       uppercase: true,
       wordSpacingEm: 0.5,
+      language: "en",
     },
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 2. NEON RAVE — Neon green pills on a dark background, electric feel
   // ─────────────────────────────────────────────────────────────────────────────
-  {
+{
     key: "neon-rave",
     name: "Neon Rave",
     presetKey: "neon-rave",
+    language: "en",
     styleJson: {
       font: "Verdana",
       fontMetricsKey: "verdana-bold",
@@ -215,6 +247,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
     key: "fire-speaker",
     name: "Fire Speaker",
     presetKey: "fire-speaker",
+    language: "en",
     styleJson: {
       font: "Impact",
       fontMetricsKey: "impact",
@@ -252,6 +285,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
     key: "ice-cold",
     name: "Ice Cold",
     presetKey: "ice-cold",
+    language: "en",
     styleJson: {
       font: "Tahoma",
       fontMetricsKey: "tahoma-bold",
@@ -289,6 +323,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
     key: "pink-pop",
     name: "Pink Pop",
     presetKey: "pink-pop",
+    language: "en",
     styleJson: {
       font: "Verdana",
       fontMetricsKey: "verdana-bold",
@@ -316,6 +351,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
       maxLines: 2,
       uppercase: true,
       wordSpacingEm: 0.5,
+      language: "en",
     },
   },
 
@@ -326,6 +362,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
     key: "gold-luxury",
     name: "Gold Luxury",
     presetKey: "gold-luxury",
+    language: "en",
     styleJson: {
       font: "Arial",
       fontMetricsKey: "arial-bold",
@@ -353,6 +390,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
       maxLines: 2,
       uppercase: false,
       wordSpacingEm: 0.45,
+      language: "en",
     },
   },
 
@@ -363,6 +401,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
     key: "electric-kinetic",
     name: "Electric Kinetic",
     presetKey: "electric-kinetic",
+    language: "en",
     styleJson: {
       font: "Impact",
       fontMetricsKey: "impact",
@@ -387,6 +426,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
       maxLines: 2,
       uppercase: false,
       wordSpacingEm: 0.3,
+      language: "en",
     },
   },
 
@@ -397,6 +437,7 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
     key: "clean-ghost",
     name: "Clean Ghost",
     presetKey: "clean-ghost",
+    language: "en",
     styleJson: {
       font: "Tahoma",
       fontMetricsKey: "tahoma",
@@ -422,11 +463,317 @@ export const BUILTIN_THEMES: BuiltinTheme[] = [
       maxLines: 2,
       uppercase: false,
       wordSpacingEm: 0.28,
+      language: "en",
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ARABIC SAFE — line-level captions for Arabic burns. The original Arabic theme
+  // kept here as the safe default. Tuned for conversation/dialogue content.
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    key: "arabic-safe",
+    name: "Arabic Safe",
+    presetKey: "arabic-safe",
+    language: "ar",
+    styleJson: {
+      font: "Noto Sans Arabic",
+      fontMetricsKey: "arial-bold",
+      fontSize: 78,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 0,
+      bold: 1,
+      anchorY: 0.65,
+      wordPillMode: "all",
+      bgHsl: NEAR_BLACK,
+      bgOpacity: 0.72,
+      highlightHsl: PURPLE_HIGHLIGHT,
+      highlightOpacity: 1,
+      animationStyle: "none",
+      animationSpeed: 1,
+      safeMarginPct: 0.08,
+      maxBlockWidthPct: 0.84,
+      lineHeight: 1.15,
+      highlightPaddingX: 12,
+      highlightPaddingY: 10,
+      highlightRadius: 12,
+      maxChars: 22,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.45,
+      direction: "rtl",
+      language: "ar",
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ARABIC MIRRORS — 7 AR themes that mirror the English builtins. each is tuned
+  // for RTL Noto Sans Arabic: a smaller maxChars (Arabic glyphs connect and read
+  // wider per character than Latin caps), tighter word spacing (already-shaped
+  // Arabic words need less inter-word padding), and `uppercase: false` always
+  // (Arabic has no case). Each keeps the energy/colour identity of its English
+  // counterpart so EN/AR projects share a visual language across transcript runs.
+  // ─────────────────────────────────────────────────────────────────────────────
+  {
+    key: "viral-ar",
+    name: "Viral Arabic (Word Pills)",
+    presetKey: "viral-ar",
+    language: "ar",
+    styleJson: {
+      font: "Noto Sans Arabic",
+      fontMetricsKey: "arial-bold",
+      fontSize: 88,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 0,
+      bold: 1,
+      anchorY: 0.62,
+      wordPillMode: "all",
+      bgHsl: NEAR_BLACK,
+      bgOpacity: 0.72,
+      highlightHsl: PURPLE_HIGHLIGHT,
+      highlightOpacity: 1,
+      animationStyle: "none",
+      animationSpeed: 1,
+      safeMarginPct: 0.05,
+      maxBlockWidthPct: 0.90,
+      lineHeight: 1.15,
+      highlightPaddingX: 12,
+      highlightPaddingY: 6,
+      highlightRadius: 10,
+      maxChars: 18,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.30,
+      direction: "rtl",
+      language: "ar",
+    },
+  },
+  {
+    key: "neon-rave-ar",
+    name: "Neon Rave Arabic",
+    presetKey: "neon-rave-ar",
+    language: "ar",
+    styleJson: {
+      font: "Noto Sans Arabic",
+      fontMetricsKey: "arial-bold",
+      fontSize: 82,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 0,
+      bold: 1,
+      anchorY: 0.62,
+      wordPillMode: "all",
+      bgHsl: DARK_PILL,
+      bgOpacity: 0.80,
+      highlightHsl: NEON_GREEN,
+      highlightOpacity: 1,
+      animationStyle: "pop",
+      animationSpeed: 1.1,
+      safeMarginPct: 0.05,
+      maxBlockWidthPct: 0.90,
+      lineHeight: 1.18,
+      highlightPaddingX: 14,
+      highlightPaddingY: 6,
+      highlightRadius: 14,
+      maxChars: 18,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.28,
+      direction: "rtl",
+      language: "ar",
+    },
+  },
+  {
+    key: "fire-speaker-ar",
+    name: "Fire Speaker Arabic",
+    presetKey: "fire-speaker-ar",
+    language: "ar",
+    styleJson: {
+      font: "Noto Sans Arabic",
+      fontMetricsKey: "arial-bold",
+      fontSize: 96,
+      primaryHsl: CREAM,
+      outlineHsl: CRIMSON,
+      outline: 10,
+      shadow: 5,
+      bold: 1,
+      anchorY: 0.62,
+      wordPillMode: "all",
+      bgHsl: [0, 0, 0.05],
+      bgOpacity: 0.78,
+      highlightHsl: ORANGE,
+      highlightOpacity: 1,
+      animationStyle: "pop",
+      animationSpeed: 1.2,
+      safeMarginPct: 0.06,
+      maxBlockWidthPct: 0.88,
+      lineHeight: 1.1,
+      highlightPaddingX: 16,
+      highlightPaddingY: 6,
+      highlightRadius: 8,
+      maxChars: 16,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.26,
+      direction: "rtl",
+      language: "ar",
+    },
+  },
+  {
+    key: "ice-cold-ar",
+    name: "Ice Cold Arabic",
+    presetKey: "ice-cold-ar",
+    language: "ar",
+    styleJson: {
+      font: "Noto Sans Arabic",
+      fontMetricsKey: "arial-bold",
+      fontSize: 84,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 0,
+      bold: 1,
+      anchorY: 0.63,
+      wordPillMode: "all",
+      bgHsl: DEEP_NAVY,
+      bgOpacity: 0.84,
+      highlightHsl: CYAN,
+      highlightOpacity: 1,
+      animationStyle: "none",
+      animationSpeed: 1,
+      safeMarginPct: 0.05,
+      maxBlockWidthPct: 0.90,
+      lineHeight: 1.15,
+      highlightPaddingX: 14,
+      highlightPaddingY: 6,
+      highlightRadius: 20,
+      maxChars: 19,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.28,
+      direction: "rtl",
+      language: "ar",
+    },
+  },
+  {
+    key: "pink-pop-ar",
+    name: "Pink Pop Arabic",
+    presetKey: "pink-pop-ar",
+    language: "ar",
+    styleJson: {
+      font: "Noto Sans Arabic",
+      fontMetricsKey: "arial-bold",
+      fontSize: 82,
+      primaryHsl: WHITE,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 0,
+      bold: 1,
+      anchorY: 0.62,
+      wordPillMode: "all",
+      bgHsl: [0, 0, 0.06],
+      bgOpacity: 0.70,
+      highlightHsl: HOT_PINK,
+      highlightOpacity: 1,
+      animationStyle: "pop",
+      animationSpeed: 1.15,
+      safeMarginPct: 0.05,
+      maxBlockWidthPct: 0.90,
+      lineHeight: 1.18,
+      highlightPaddingX: 14,
+      highlightPaddingY: 6,
+      highlightRadius: 50,
+      maxChars: 18,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.30,
+      direction: "rtl",
+      language: "ar",
+    },
+  },
+  {
+    key: "gold-luxury-ar",
+    name: "Gold Luxury Arabic",
+    presetKey: "gold-luxury-ar",
+    language: "ar",
+    styleJson: {
+      font: "Noto Sans Arabic",
+      fontMetricsKey: "arial-bold",
+      fontSize: 86,
+      primaryHsl: CREAM,
+      outlineHsl: BLACK,
+      outline: 0,
+      shadow: 4,
+      bold: 1,
+      anchorY: 0.63,
+      wordPillMode: "all",
+      bgHsl: [0, 0, 0.04],
+      bgOpacity: 0.88,
+      highlightHsl: GOLD,
+      highlightOpacity: 1,
+      animationStyle: "none",
+      animationSpeed: 1,
+      safeMarginPct: 0.06,
+      maxBlockWidthPct: 0.88,
+      lineHeight: 1.2,
+      highlightPaddingX: 16,
+      highlightPaddingY: 6,
+      highlightRadius: 6,
+      maxChars: 19,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.28,
+      direction: "rtl",
+      language: "ar",
+    },
+  },
+  {
+    key: "electric-kinetic-ar",
+    name: "Electric Kinetic Arabic",
+    presetKey: "electric-kinetic-ar",
+    language: "ar",
+    styleJson: {
+      font: "Noto Sans Arabic",
+      fontMetricsKey: "arial-bold",
+      // Slightly smaller than the English Impact version — Arabic at very large
+      // sizes on RTL reading order takes more visual real estate per line.
+      fontSize: 92,
+      primaryHsl: WHITE,
+      outlineHsl: ELECTRIC_BLUE,
+      outline: 14,
+      shadow: 5,
+      bold: 1,
+      anchorY: 0.62,
+      wordPillMode: "all",
+      bgHsl: [0, 0, 0.05],
+      bgOpacity: 0.72,
+      highlightHsl: AMBER,
+      highlightOpacity: 1,
+      animationStyle: "pop",
+      animationSpeed: 1.2,
+      safeMarginPct: 0.07,
+      maxBlockWidthPct: 0.86,
+      lineHeight: 1.0,
+      highlightPaddingX: 18,
+      highlightPaddingY: 6,
+      highlightRadius: 20,
+      maxChars: 22,
+      maxLines: 2,
+      uppercase: false,
+      wordSpacingEm: 0.24,
+      direction: "rtl",
+      language: "ar",
     },
   },
 ];
 
 export const DEFAULT_THEME_KEY = "viral";
+export const ARABIC_THEME_KEY = "arabic-safe";
 
 export function findBuiltinTheme(key: string): BuiltinTheme | undefined {
   return BUILTIN_THEMES.find((t) => t.key === key);

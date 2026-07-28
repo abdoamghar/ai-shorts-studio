@@ -27,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClipCard, type ClipCardData } from "@/components/clip-card";
 import { ProjectExportsPanel } from "@/components/project-exports-panel";
+import { SubtitleThemePicker } from "@/components/subtitle-theme-picker";
 import { TimelineView } from "@/components/timeline-view";
 
 export type ProjectDetail = {
@@ -39,6 +40,12 @@ export type ProjectDetail = {
   durationSec: number | null;
   status: string;
   createdAt: string | null;
+  /** Output subtitle / metadata language for this project. */
+  subtitleLanguage?: "en" | "ar";
+  /** Active English theme id (from settingsJson.subtitleThemeId, may be null = default). */
+  subtitleThemeId?: string | null;
+  /** Active Arabic theme id (from settingsJson.subtitleThemeIdAr, may be null = default). */
+  subtitleThemeIdAr?: string | null;
 };
 
 export type LatestJob = {
@@ -293,6 +300,9 @@ export function ProjectDetail({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Badge variant="secondary">
+            {(project.subtitleLanguage ?? "en") === "ar" ? "AR" : "EN"}
+          </Badge>
           <Badge variant="outline">{STATUS_LABEL[project.status] ?? project.status}</Badge>
           <Button
             variant="ghost"
@@ -332,15 +342,54 @@ export function ProjectDetail({
                 size="sm"
                 className="ml-auto h-7 text-xs"
                 onClick={async () => {
-                  toast.success("Re-rendering subtitles...");
-                  await fetch(`/api/jobs/${job.id}/retry`, {
-                    method: "POST",
-                    body: JSON.stringify({ step: "subtitles" }),
-                    headers: { "Content-Type": "application/json" },
-                  });
+                  try {
+                    const res = await fetch(`/api/jobs/${job.id}/retry`, {
+                      method: "POST",
+                      body: JSON.stringify({ step: "subtitles" }),
+                      headers: { "Content-Type": "application/json" },
+                    });
+                    const body = (await res.json().catch(() => null)) as {
+                      error?: string;
+                    } | null;
+                    if (!res.ok) {
+                      throw new Error(body?.error ?? "Retry failed.");
+                    }
+                    toast.success("Re-queued from subtitles step.");
+                    router.refresh();
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Retry failed.");
+                  }
                 }}
               >
                 <RotateCcwIcon className="mr-1 size-3.5" /> Re-render subtitles
+              </Button>
+            ) : null}
+            {job.status === "failed" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto h-7 text-xs"
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/jobs/${job.id}/retry`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: "{}",
+                    });
+                    const body = (await res.json().catch(() => null)) as {
+                      error?: string;
+                    } | null;
+                    if (!res.ok) {
+                      throw new Error(body?.error ?? "Retry failed.");
+                    }
+                    toast.success("Re-queued. Resuming from the failed step.");
+                    router.refresh();
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Retry failed.");
+                  }
+                }}
+              >
+                <RotateCcwIcon className="mr-1 size-3.5" /> Retry
               </Button>
             ) : null}
           </div>
@@ -349,6 +398,20 @@ export function ProjectDetail({
           ) : null}
         </Card>
       ) : null}
+
+      {/* Subtitle theme picker — one picker, filtered by the project's subtitle
+          language. Persists to settingsJson.subtitleThemeId (EN) or
+          subtitleThemeIdAr (AR). Survives a render retry because the renderer
+          reads back from those same fields. */}
+      <SubtitleThemePicker
+        projectId={project.id}
+        language={project.subtitleLanguage ?? "en"}
+        selectedThemeId={
+          (project.subtitleLanguage ?? "en") === "ar"
+            ? (project.subtitleThemeIdAr ?? null)
+            : (project.subtitleThemeId ?? null)
+        }
+      />
 
       {/* Video preview + transcript tabs */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">

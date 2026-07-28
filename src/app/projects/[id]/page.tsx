@@ -4,12 +4,24 @@ import type { Metadata } from "next";
 
 import { db } from "@/lib/db/client";
 import { jobs as jobsTable, projects as projectsTable } from "@/lib/db/schema";
+import { readSubtitleLanguage } from "@/lib/subtitles/language";
 import {
   ProjectDetail,
   LatestJob,
 } from "@/components/project-detail";
 
 export const dynamic = "force-dynamic";
+
+/** Read a trimmed string field from the project settingsJson blob. */
+function readStringSetting(settingsJson: string | null, key: string): string | null {
+  try {
+    const parsed = JSON.parse(settingsJson ?? "{}") as Record<string, unknown>;
+    const v = parsed[key];
+    return typeof v === "string" && v.trim() ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function generateMetadata({
   params,
@@ -58,6 +70,13 @@ export default async function ProjectPage({
     durationSec: project.durationSec,
     status: project.status,
     createdAt: project.createdAt,
+    subtitleLanguage: readSubtitleLanguage(project.settingsJson),
+    // Surface the currently-selected EN and AR theme IDs so the picker can
+    // show the active entry on load without mounting a second GET. Parsed out
+    // of settingsJson once here (server component) and threaded into the
+    // client component as plain strings.
+    subtitleThemeId: readStringSetting(project.settingsJson, "subtitleThemeId"),
+    subtitleThemeIdAr: readStringSetting(project.settingsJson, "subtitleThemeIdAr"),
   };
 
   const latestJob: LatestJob = latestJobRow

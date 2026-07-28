@@ -147,12 +147,29 @@ class JobRunner {
   /** Retry a failed/cancelled job by creating a fresh job row for the same
    * project+type, seeded with the failed job's last `step` as the resume point
    * so the pipeline doesn't redo completed steps (download/audio/transcribe).
+   *
+   * Also allows re-running a specific step from a succeeded job (e.g.
+   * "Re-render subtitles") — when `targetStep` is explicitly set AND the
+   * original job succeeded, we allow it through as a targeted re-run.
    */
   retry(jobId: string, targetStep?: string): Job {
     const job = this.get(jobId);
     if (!job) throw new Error("Job not found.");
+    if (!job.projectId) {
+      throw new Error("This job has no project attached, so it cannot be retried.");
+    }
+    // Re-render subtitles button calls retry with targetStep="subtitles" on a
+    // completed job — a legitimate operation. Allow succeeded jobs through only
+    // when re-targeting a specific step (not a generic retry of succeeded work).
+    if (job.status !== "failed" && job.status !== "cancelled") {
+      if (job.status !== "succeeded" || !targetStep) {
+        throw new Error(
+          `Only failed or cancelled jobs can be retried (status: ${job.status}).`,
+        );
+      }
+    }
     return this.enqueue({
-      projectId: job.projectId!,
+      projectId: job.projectId,
       type: job.type as JobType,
       restartFromStep: targetStep ?? job.step ?? undefined,
     });
@@ -190,7 +207,10 @@ class JobRunner {
       jobId,
       projectId: job.projectId!,
       restartFromStep: job.restartFromStep ?? undefined,
-      log: (message, level = "info") => this.log(jobId, undefined, message, level),
+      log: (message, level = "info") => {
+        const current = this.get(jobId);
+        this.log(jobId, current?.step ?? undefined, message, level);
+      },
       setStep: (step, message) => this.updateStep(jobId, step, message),
       setProgress: (progress, message) => this.updateProgress(jobId, progress, message),
     };

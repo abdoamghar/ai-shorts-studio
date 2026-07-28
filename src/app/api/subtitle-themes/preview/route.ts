@@ -7,6 +7,11 @@ import path from "node:path";
 
 import { resolveFfmpeg } from "@/lib/binaries";
 import { buildAss } from "@/lib/subtitles/ass";
+import { buildAssArabic } from "@/lib/subtitles/ass-ar";
+import {
+  escapeFontsDirForFilter,
+  resolveArabicFontsDir,
+} from "@/lib/subtitles/fonts-ar";
 import { buildLines } from "@/lib/subtitles/lines";
 import type { StyleJson } from "@/lib/subtitles/themes";
 
@@ -41,6 +46,21 @@ const StyleJsonBody = z.object({
   // fades its highlight box in over popMs; "none" keeps the current behavior.
   animationStyle: z.enum(["none", "pop"]).optional(),
   animationSpeed: z.number().min(0.1).max(4),
+  wordPillMode: z.enum(["none", "all"]).optional(),
+  bgHsl: z.tuple([z.number(), z.number(), z.number()]).optional(),
+  bgOpacity: z.number().min(0).max(1).optional(),
+  uppercase: z.boolean().optional(),
+  wordSpacingEm: z.number().min(0).max(2).optional(),
+  direction: z.enum(["ltr", "rtl"]).optional(),
+  // Script/language tag — "en" (default) or "ar". Drives which ASS builder the
+  // preview should use (English buildAss vs Arabic buildAssArabic) so the
+  // preview frame matches the real render path byte-for-byte.
+  language: z.enum(["en", "ar"]).optional(),
+  // Arabic path only lets a client-posted theme carry the inactive-pill flag
+  // inline so the preview can render either on/off state without persisting
+  // a General Settings change. At actual render time the global toggle
+  // overrides whatever the resolved theme carries.
+  showInactiveWordPills: z.boolean().optional(),
   maxChars: z.number().int().min(8).max(80),
   maxLines: z.number().int().min(1).max(5),
 });
@@ -49,6 +69,13 @@ const Body = z.object({
   styleJson: StyleJsonBody,
   /** Optional sample line to render. A longer default shows wrap/balance. */
   sample: z.string().min(1).max(200).optional(),
+  /**
+   * Arabic path only. When false, the dark inactive-word ghost pills are
+   * suppressed and inactive words render as plain outlined text — only the
+   * active word gets its colored highlight pill. Mirrors the global General
+   * Settings toggle of the same name so the preview matches the burn.
+   */
+  showInactiveWordPills: z.boolean().optional(),
 });
 
 const DEFAULT_SAMPLE = "THEY KNOW WHO I AM AND THEY KNOW WHAT I DID";
@@ -86,17 +113,47 @@ export async function POST(request: Request) {
     );
   }
   const style = parsed.data.styleJson as StyleJson;
+  // Detect Arabic via the new explicit `language` field on StyleJson. The
+  // font-name and sample-script heuristics stay as back-compat fallbacks for
+  // older DB rows (and any client-posted style that pre-dates the field) or
+  // for ad-hoc custom themes the user creates and forgets to tag.
+  const isArabicTheme =
+    style.language === "ar" ||
+    style.font.toLowerCase().includes("arabic") ||
+    style.font.toLowerCase().includes("naskh") ||
+    /[\u0600-\u06FF]/.test(parsed.data.sample ?? "");
 
-  const sample = parsed.data.sample ?? DEFAULT_SAMPLE;
-  // Build a single clip-relative line from the sample words (fake even timing)
-  // so the karaoke highlight positions on a readable word.
-  const words = sample.split(/\s+/).map((text, i) => ({
-    text,
-    startMs: i * 250,
-    endMs: (i + 1) * 250,
-  }));
-  const lines = buildLines(words, 0, style.maxChars, style.maxLines);
-  const ass = buildAss(lines, style);
+  const defaultArabicSample = "هذا ما يبدو عليه النص العربي في الفيديو القصير";
+  const sample =
+    parsed.data.sample ??
+    (isArabicTheme ? defaultArabicSample : DEFAULT_SAMPLE);
+
+  let ass: string;
+  let fontsDir: string | null = null;
+
+  if (isArabicTheme) {
+    // Pass the user's style straight through — buildAssArabic does the
+    // ARABIC_SAFE_STYLE -> user-style -> safe-coerce merge internally
+    // (uppercase: false, direction: rtl, wordPillMode: all). The render path
+    // (pipeline/subtitles-ar.ts) does the exact same call, so the preview
+    // matches what the burned-in MP4 will look like byte-for-byte. Threads
+    // the global showInactiveWordPills flag through as the third arg so the
+    // preview honors the same toggle the renderer does.
+    ass = buildAssArabic(
+      [{ startMs: 0, endMs: 2000, text: sample }],
+      style,
+      style.showInactiveWordPills ?? parsed.data.showInactiveWordPills ?? true,
+    );
+    fontsDir = resolveArabicFontsDir();
+  } else {
+    const words = sample.split(/\s+/).map((text, i) => ({
+      text,
+      startMs: i * 250,
+      endMs: (i + 1) * 250,
+    }));
+    const lines = buildLines(words, 0, style.maxChars, style.maxLines);
+    ass = buildAss(lines, style);
+  }
 
   const dir = mkdtempSync(path.join(tmpdir(), "shorts-preview-"));
   const assPath = path.join(dir, "sample.ass");
@@ -106,6 +163,10 @@ export async function POST(request: Request) {
   const color = hslToHex([222, 0.16, 0.16]); // charcoal background
   const relAss = path.relative(dir, assPath).split(path.sep).join("/");
   const subsFilterArg = relAss.replace(/\\/g, "/").replace(/:/g, "\\:");
+  let subsFilter = `subtitles=${subsFilterArg}`;
+  if (fontsDir) {
+    subsFilter = `subtitles=${subsFilterArg}:fontsdir='${escapeFontsDirForFilter(fontsDir)}'`;
+  }
 
   const ffmpeg = resolveFfmpeg();
   const args = [
@@ -118,7 +179,7 @@ export async function POST(request: Request) {
     "-i",
     `color=c=${color}:s=1080x1920:d=1`,
     "-filter_complex",
-    `subtitles=${subsFilterArg}`,
+    subsFilter,
     "-frames:v",
     "1",
     "-q:v",

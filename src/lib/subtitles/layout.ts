@@ -143,6 +143,17 @@ export function layoutBlock(
 
   const lines: LaidLine[] = partitions.map((p) => buildLine(p, fontKey, fontSize, bold, spacePx));
 
+  // RTL: keep speaking/logical word order for karaoke timing, but flip each
+  // word's x-offset so the first word sits on the RIGHT (Arabic reading order).
+  // English (ltr) path is unchanged.
+  if (style.direction === "rtl") {
+    for (const line of lines) {
+      line.wordOffsets = line.wordOffsets.map(
+        (offset, i) => line.widthPx - offset - line.wordWidths[i],
+      );
+    }
+  }
+
   // Second pass: BALANCE breaks so consecutive lines are within ~15% width.
   // Move the FIRST word of a (non-final) line to the END of the previous line
   // if doing so reduces the width delta and keeps every line ≤ maxBlockWidth

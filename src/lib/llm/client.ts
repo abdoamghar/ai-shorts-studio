@@ -40,6 +40,14 @@ export type ChatJsonOptions = {
   maxTokens?: number;
   /** AbortSignal for the caller (job cancellation). */
   signal?: AbortSignal;
+  /**
+   * Called roughly every `heartbeatMs` while the request is in flight so the
+   * job UI can show live progress during long LLM waits (otherwise the bar
+   * looks frozen until the provider responds).
+   */
+  onHeartbeat?: (elapsedMs: number) => void;
+  /** Heartbeat interval in ms (default 2500). */
+  heartbeatMs?: number;
 };
 
 const DEFAULT_TIMEOUT_MS = 120_000; // transcription-chunk analysis can be slow
@@ -163,6 +171,18 @@ export async function chatJson(
     opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
 
+  const startedAt = Date.now();
+  const heartbeatMs = opts.heartbeatMs ?? 2500;
+  const heartbeat =
+    opts.onHeartbeat &&
+    setInterval(() => {
+      try {
+        opts.onHeartbeat!(Date.now() - startedAt);
+      } catch {
+        /* ignore heartbeat errors */
+      }
+    }, heartbeatMs);
+
   try {
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
@@ -212,6 +232,7 @@ export async function chatJson(
       `LLM request failed: ${err instanceof Error ? err.message : "unknown error"}`,
     );
   } finally {
+    if (heartbeat) clearInterval(heartbeat);
     clearTimeout(timeout);
   }
 }

@@ -58,6 +58,10 @@ export default function QueuePage() {
     setJobs((prev) => prev.filter((j) => j.id !== jobId));
   }
 
+  function handleRetried(_newJobId: string, _oldJobId: string) {
+    void loadJobs();
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -132,7 +136,12 @@ export default function QueuePage() {
               </h2>
               <div className="space-y-3">
                 {active.map((job) => (
-                  <JobCard key={job.id} job={job} onDeleted={handleDeleted} />
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onDeleted={handleDeleted}
+                    onRetried={handleRetried}
+                  />
                 ))}
               </div>
             </section>
@@ -145,7 +154,12 @@ export default function QueuePage() {
               </h2>
               <div className="space-y-3">
                 {done.map((job) => (
-                  <JobCard key={job.id} job={job} onDeleted={handleDeleted} />
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onDeleted={handleDeleted}
+                    onRetried={handleRetried}
+                  />
                 ))}
               </div>
             </section>

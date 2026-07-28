@@ -57,6 +57,7 @@ export async function GET() {
 const Body = z.object({
   url: z.string().trim().min(1, "URL is required."),
   framingStyle: z.enum(["blur", "crop", "auto-crop"]).optional(),
+  subtitleLanguage: z.enum(["en", "ar"]).optional(),
 });
 
 /** Extract the 11-char YouTube video id from any standard URL form. */
@@ -112,8 +113,11 @@ export async function POST(request: Request) {
   }
 
   const id = randomUUID();
-  const settingsJson = parsed.data.framingStyle ? JSON.stringify({ framingStyle: parsed.data.framingStyle }) : "{}";
-  
+  const settings: Record<string, string> = {};
+  if (parsed.data.framingStyle) settings.framingStyle = parsed.data.framingStyle;
+  if (parsed.data.subtitleLanguage) settings.subtitleLanguage = parsed.data.subtitleLanguage;
+  const settingsJson = Object.keys(settings).length > 0 ? JSON.stringify(settings) : "{}";
+
   db.insert(projectsTable)
     .values({ id, url, videoId, status: "pending", settingsJson })
     .run();

@@ -61,6 +61,11 @@ export const clips = sqliteTable("clips", {
   overallScore: real("overall_score"),
   hashtagsJson: text("hashtags_json").notNull().default("[]"),
   keywordsJson: text("keywords_json").notNull().default("[]"),
+  // Arabic localized fields (separate from English — never overwrite source)
+  titleAr: text("title_ar"),
+  hookAr: text("hook_ar"),
+  summaryAr: text("summary_ar"),
+  hashtagsArJson: text("hashtags_ar_json").notNull().default("[]"),
   startWordIdx: integer("start_word_idx"),
   endWordIdx: integer("end_word_idx"),
   thumbnailPath: text("thumbnail_path"),

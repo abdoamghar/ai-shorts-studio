@@ -8,6 +8,8 @@ import { db } from "@/lib/db/client";
 import { clips as clipsTable, projects, renders as rendersTable } from "@/lib/db/schema";
 import { rendersDir, subtitlesDir } from "@/lib/storage/paths";
 import { renderClip } from "@/lib/video/render";
+import { readSubtitleLanguage } from "@/lib/subtitles/language";
+import { resolveArabicFontsDir } from "@/lib/subtitles/fonts-ar";
 import type { JobContext } from "@/lib/jobs/runner";
 
 /**
@@ -67,6 +69,9 @@ export async function runRender(ctx: JobContext): Promise<void> {
         const outPath = clipRenderPath(ctx.projectId, clip.idx);
 
         let framingStyle: "blur" | "crop" | "auto-crop" = "blur";
+        const subtitleLanguage = readSubtitleLanguage(project.settingsJson);
+        const fontsDir =
+          subtitleLanguage === "ar" ? resolveArabicFontsDir() : null;
         try {
           if (project.settingsJson) {
             const parsed = JSON.parse(project.settingsJson);
@@ -85,6 +90,7 @@ export async function runRender(ctx: JobContext): Promise<void> {
             assPath,
             outPath,
             framingStyle,
+            fontsDir,
           });
           return { clip, success: true, outPath };
         } catch (err) {

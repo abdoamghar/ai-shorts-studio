@@ -26,6 +26,7 @@ export async function GET() {
       projectTitle: projectsTable.title,
       projectVideoId: projectsTable.videoId,
       projectThumbnailUrl: projectsTable.thumbnailUrl,
+      projectSettingsJson: projectsTable.settingsJson,
     })
     .from(jobsTable)
     .leftJoin(projectsTable, eq(jobsTable.projectId, projectsTable.id))
@@ -33,5 +34,19 @@ export async function GET() {
     .limit(50)
     .all();
 
-  return Response.json({ jobs: rows });
+  const jobs = rows.map((row) => {
+    let subtitleLanguage: "en" | "ar" = "en";
+    try {
+      const parsed = JSON.parse(row.projectSettingsJson ?? "{}") as {
+        subtitleLanguage?: string;
+      };
+      if (parsed.subtitleLanguage === "ar") subtitleLanguage = "ar";
+    } catch {
+      /* default en */
+    }
+    const { projectSettingsJson: _omit, ...rest } = row;
+    return { ...rest, subtitleLanguage };
+  });
+
+  return Response.json({ jobs });
 }

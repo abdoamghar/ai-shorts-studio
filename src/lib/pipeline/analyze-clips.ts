@@ -132,22 +132,9 @@ export async function runAnalyze(ctx: JobContext): Promise<void> {
     },
   });
 
-  // ── Pre-flight: quick API connectivity test ──────────────────────────
-  ctx.setProgress(5, "Testing API connection");
-  try {
-    await chatJson(
-      [{ role: "user", content: "Reply with: {\"ok\":true}" }],
-      { temperature: 0, maxTokens: 32 },
-    );
-    ctx.log("API connection test passed.");
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "unknown";
-    throw new Error(
-      `LLM API connection test failed before analysis: ${msg}. Check your API key and provider settings.`,
-    );
-  }
-
   // ── Main LLM call with retry (up to 3 attempts on timeout/transient) ─
+  // Note: no separate "connection test" ping — that burned an extra quota
+  // slot and hard-failed on 503 ResourceExhausted before analysis could run.
   ctx.setProgress(10, "Calling LLM");
 
   const MAX_ATTEMPTS = 3;
@@ -157,32 +144,51 @@ export async function runAnalyze(ctx: JobContext): Promise<void> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       ctx.log(attempt > 1 ? `LLM attempt ${attempt}/${MAX_ATTEMPTS}…` : "Sending analysis prompt to LLM…");
+      ctx.setProgress(10 + (attempt - 1) * 5, `Calling LLM (attempt ${attempt}/${MAX_ATTEMPTS})`);
       result = await chatJson([{ role: "user", content: prompt }], {
         temperature: 0.4,
         maxTokens: 8192,
+        onHeartbeat: (elapsedMs) => {
+          const sec = Math.round(elapsedMs / 1000);
+          ctx.setProgress(
+            Math.min(55, 12 + Math.floor(sec / 3)),
+            `Waiting for LLM… ${sec}s`,
+          );
+          if (sec > 0 && sec % 5 === 0) {
+            ctx.log(`Still waiting for LLM analysis… ${sec}s elapsed`);
+          }
+        },
       });
       break; // success
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      const isTimeout = lastError.message.toLowerCase().includes("timed out");
+      const msg = lastError.message.toLowerCase();
+      const isTimeout = msg.includes("timed out");
+      const isRateLimited =
+        msg.includes("429") ||
+        msg.includes("resourceexhausted") ||
+        msg.includes("rate limit") ||
+        msg.includes("request limit");
       const isTransient =
         isTimeout ||
-        lastError.message.toLowerCase().includes("429") ||
-        lastError.message.toLowerCase().includes("500") ||
-        lastError.message.toLowerCase().includes("502") ||
-        lastError.message.toLowerCase().includes("503") ||
-        lastError.message.toLowerCase().includes("504");
+        isRateLimited ||
+        msg.includes("500") ||
+        msg.includes("502") ||
+        msg.includes("503") ||
+        msg.includes("504");
 
       if (!isTransient || attempt === MAX_ATTEMPTS) {
         ctx.log(`LLM failed (attempt ${attempt}/${MAX_ATTEMPTS}): ${lastError.message}`, "error");
         throw lastError;
       }
 
-      const delaySec = attempt * 5; // 5s, 10s backoff
+      // Rate limits need longer backoff than generic 5xx.
+      const delaySec = isRateLimited ? attempt * 20 : attempt * 5; // 20/40s or 5/10s
       ctx.log(
-        `LLM attempt ${attempt} failed (${isTimeout ? "timeout" : "transient error"}). Retrying in ${delaySec}s…`,
+        `LLM attempt ${attempt} failed (${isRateLimited ? "rate limit" : isTimeout ? "timeout" : "transient error"}). Waiting ${delaySec}s before retry…`,
         "warn",
       );
+      ctx.setProgress(10 + attempt * 5, `Rate limited — waiting ${delaySec}s…`);
       await new Promise((r) => setTimeout(r, delaySec * 1000));
     }
   }
@@ -212,7 +218,14 @@ export async function runAnalyze(ctx: JobContext): Promise<void> {
           "Return ONLY the JSON object with a `clips` array, no markdown or prose.",
       },
     ];
-    const retry = await chatJson(retryMessages, { temperature: 0.2, maxTokens: 8192 });
+    const retry = await chatJson(retryMessages, {
+      temperature: 0.2,
+      maxTokens: 8192,
+      onHeartbeat: (elapsedMs) => {
+        const sec = Math.round(elapsedMs / 1000);
+        ctx.setProgress(Math.min(58, 50 + Math.floor(sec / 4)), `Re-prompting LLM… ${sec}s`);
+      },
+    });
     candidates = parseClipsResponse(retry.json);
     if (retry.usage?.promptTokens) {
       ctx.log(

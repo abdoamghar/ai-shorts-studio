@@ -6,6 +6,7 @@ import path from "node:path";
 import { resolveFfmpeg, resolvePython } from "@/lib/binaries";
 import { projectDir } from "@/lib/storage/paths";
 import { videoPath } from "@/lib/pipeline/download";
+import { escapeFontsDirForFilter } from "@/lib/subtitles/fonts-ar";
 import type { JobContext } from "@/lib/jobs/runner";
 
 /**
@@ -44,6 +45,8 @@ export type RenderInput = {
   assPath: string;
   outPath: string;
   framingStyle?: "blur" | "crop" | "auto-crop";
+  /** Absolute fonts dir for libass (Arabic burns only). English path omits this. */
+  fontsDir?: string | null;
   job?: JobContext;
 };
 
@@ -108,6 +111,13 @@ export async function renderClip(input: RenderInput): Promise<string> {
   const relAss = path.relative(cwd, input.assPath).split(path.sep).join("/");
   const subsFilterArg = relAss.replace(/\\/g, "/").replace(/:/g, "\\:");
 
+  // fontsdir only for Arabic (or any caller that opts in). English burns omit it.
+  let subsFilter = `subtitles=${subsFilterArg}`;
+  if (input.fontsDir) {
+    const escapedFonts = escapeFontsDirForFilter(input.fontsDir);
+    subsFilter = `subtitles=${subsFilterArg}:fontsdir='${escapedFonts}'`;
+  }
+
   let sendCmdFilter = "";
   if (input.framingStyle === "auto-crop") {
     const cmdPath = await runFaceTracker(input, cwd);
@@ -123,7 +133,7 @@ export async function renderClip(input: RenderInput): Promise<string> {
     ? [
         `[0:v]setpts=PTS-STARTPTS[clip]`,
         `[clip]scale=1080:1920:force_original_aspect_ratio=increase,${sendCmdFilter}crop=1080:1920[base]`,
-        `[base]subtitles=${subsFilterArg}[v]`,
+        `[base]${subsFilter}[v]`,
       ].join(";")
     : [
         `[0:v]setpts=PTS-STARTPTS[clip]`,
@@ -131,7 +141,7 @@ export async function renderClip(input: RenderInput): Promise<string> {
         `[fg]scale=1080:-2:force_original_aspect_ratio=decrease[fgscaled]`,
         `[bgsrc]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=20:10,eq=brightness=-0.05:saturation=0.8,scale=1080:1920:flags=fast_bilinear[bg]`,
         `[bg][fgscaled]overlay=(W-w)/2:(H-h)/2[base]`,
-        `[base]subtitles=${subsFilterArg}[v]`,
+        `[base]${subsFilter}[v]`,
       ].join(";");
 
   if (existsSync(input.outPath)) rmSync(input.outPath, { force: true });

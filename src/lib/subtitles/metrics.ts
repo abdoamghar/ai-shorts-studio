@@ -179,13 +179,27 @@ export function measureText(
   if (!text) return 0;
   const m = fontMetrics(fontKey, bold);
   let widthEm = 0;
+  let arabicChars = 0;
   for (const ch of text) {
     const adv = m.advances[ch];
     if (adv !== undefined) widthEm += adv;
     else if (ch === " ") widthEm += m.spaceAdvance;
+    // Arabic / Persian / Urdu block. Arabic is CURSIVE: consecutive letters
+    // join and overlap, so a per-character advance (edge-to-edge advance width
+    // as for Latin) is VASTLY too wide for summed estimates — connected Arabic
+    // ink advance averages ~0.23em per letter at Noto Sans Arabic Bold (measured
+    // via ffmpeg+libass: rendered ink widths of typical words are ~0.27x of the
+    // naive 0.72em-per-char estimate). Use 0.30em to reserve a small side
+    // bearing for the pill box while still matching real connected glyph runs.
+    else if (ch >= "\u0600" && ch <= "\u06FF") { widthEm += 0.27; arabicChars++; }
     else widthEm += m.avgAdvance;
   }
-  // 3% safety inflation so we never overshoot a safe margin.
+  // 3% safety inflation so we never overshoot a safe margin. Arabic is handled
+  // by the explicit 0.30em per char above (which already sizes to REAL ink +
+  // small side bearing), so we use the SAME 3% inflation as Latin — the old 8%
+  // Arabic inflation pushed the per-word \pos grid used by ass-ar.ts ~3.4x too
+  // wide, leaving huge gaps between per-word positioned glyphs on screen.
+  void arabicChars;
   const widthPx = widthEm * fontSize * 1.03;
   return Math.round(widthPx);
 }

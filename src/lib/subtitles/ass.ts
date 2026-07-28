@@ -119,7 +119,7 @@ function esc(text: string): string {
  * The path is a single closed, non-self-intersecting clockwise outline, which
  * libass fills cleanly with the default even-odd-free winding.
  */
-function roundedRectDrawing(w: number, h: number, radius: number): string {
+export function roundedRectDrawing(w: number, h: number, radius: number): string {
   const r = Math.max(0, Math.min(radius, Math.min(w, h) / 2));
   const N = 6; // segments per corner arc
   const rnd = (n: number) => Math.round(n).toString();

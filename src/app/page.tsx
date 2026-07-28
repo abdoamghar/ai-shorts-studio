@@ -61,6 +61,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [url, setUrl] = React.useState("");
   const [framingStyle, setFramingStyle] = React.useState("blur");
+  const [subtitleLanguage, setSubtitleLanguage] = React.useState("en");
   const [submitting, setSubmitting] = React.useState(false);
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [recent, setRecent] = React.useState<RecentProject[]>([]);
@@ -77,7 +78,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: trimmed, framingStyle }),
+        body: JSON.stringify({ url: trimmed, framingStyle, subtitleLanguage }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -102,13 +103,28 @@ export default function DashboardPage() {
         const [sr, pr, gs] = await Promise.all([
           fetch("/api/stats", { cache: "no-store" }).then((r) => r.json() as Promise<{ stats: Stats }>),
           fetch("/api/projects", { cache: "no-store" }).then((r) => r.json() as Promise<{ projects: RecentProject[] }>),
-          fetch("/api/settings/general", { cache: "no-store" }).then((r) => r.json() as Promise<{ defaultFramingStyle?: string }>).catch(() => ({})),
+          fetch("/api/settings/general", { cache: "no-store" })
+            .then(
+              (r) =>
+                r.json() as Promise<{
+                  defaultFramingStyle?: string;
+                  defaultSubtitleLanguage?: string;
+                }>,
+            )
+            .catch(() => ({})),
         ]);
         if (!cancelled) {
           setStats(sr.stats);
           setRecent((pr.projects ?? []).slice(0, 6));
-          if ((gs as { defaultFramingStyle?: string }).defaultFramingStyle) {
-            setFramingStyle((gs as { defaultFramingStyle?: string }).defaultFramingStyle!);
+          const general = gs as {
+            defaultFramingStyle?: string;
+            defaultSubtitleLanguage?: string;
+          };
+          if (general.defaultFramingStyle) {
+            setFramingStyle(general.defaultFramingStyle);
+          }
+          if (general.defaultSubtitleLanguage === "en" || general.defaultSubtitleLanguage === "ar") {
+            setSubtitleLanguage(general.defaultSubtitleLanguage);
           }
         }
       } catch {
@@ -151,16 +167,27 @@ export default function DashboardPage() {
                   disabled={submitting}
                 />
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <select
                   value={framingStyle}
                   onChange={(e) => setFramingStyle(e.target.value)}
-                  className="h-11 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-11 min-w-[12rem] flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={submitting}
+                  aria-label="Framing style"
                 >
                   <option value="blur">Blur Background (Gaming/Action)</option>
                   <option value="crop">Full-Screen Crop (Podcast/Debates)</option>
                   <option value="auto-crop">Auto-Crop (Face Tracking)</option>
+                </select>
+                <select
+                  value={subtitleLanguage}
+                  onChange={(e) => setSubtitleLanguage(e.target.value)}
+                  className="h-11 min-w-[10rem] flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={submitting}
+                  aria-label="Subtitle language"
+                >
+                  <option value="en">English subtitles</option>
+                  <option value="ar">Arabic subtitles</option>
                 </select>
               </div>
             </div>

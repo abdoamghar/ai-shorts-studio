@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import type { GeneralSettings } from "@/lib/settings/store";
 import type { SubtitleTheme } from "@/lib/db/schema";
 
@@ -39,6 +40,12 @@ export function GeneralSettingsForm({
   const [maxClips, setMaxClips] = React.useState(initial.maxClips.toString());
   const [defaultSubtitleThemeId, setDefaultSubtitleThemeId] = React.useState(initial.defaultSubtitleThemeId);
   const [defaultFramingStyle, setDefaultFramingStyle] = React.useState(initial.defaultFramingStyle);
+  const [defaultSubtitleLanguage, setDefaultSubtitleLanguage] = React.useState(
+    initial.defaultSubtitleLanguage,
+  );
+  const [arabicShowInactiveWordPills, setArabicShowInactiveWordPills] = React.useState(
+    initial.arabicShowInactiveWordPills ?? true,
+  );
 
   async function onSave() {
     const clipsNum = parseInt(maxClips, 10);
@@ -57,6 +64,8 @@ export function GeneralSettingsForm({
           maxClips: clipsNum,
           defaultSubtitleThemeId,
           defaultFramingStyle,
+          defaultSubtitleLanguage,
+          arabicShowInactiveWordPills,
         }),
       });
       const data = (await res.json()) as GeneralSettings & { error?: string };
@@ -67,6 +76,8 @@ export function GeneralSettingsForm({
       setMaxClips(data.maxClips.toString());
       setDefaultSubtitleThemeId(data.defaultSubtitleThemeId);
       setDefaultFramingStyle(data.defaultFramingStyle);
+      setDefaultSubtitleLanguage(data.defaultSubtitleLanguage);
+      setArabicShowInactiveWordPills(data.arabicShowInactiveWordPills ?? true);
       toast.success("General settings saved successfully.");
       router.refresh();
     } catch (err) {
@@ -153,6 +164,45 @@ export function GeneralSettingsForm({
                 <SelectItem value="auto-crop">Auto-Crop (Face Tracking)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Default Subtitle Language</Label>
+            <Select
+              value={defaultSubtitleLanguage}
+              onValueChange={(v: string) => setDefaultSubtitleLanguage(v as "en" | "ar")}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select subtitle language" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="ar">Arabic (localized Shorts)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Default for new projects. Arabic localizes burned captions and clip titles via the LLM.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="arabic-show-inactive-word-pills">
+                Show inactive word pills (Arabic)
+              </Label>
+              <Switch
+                id="arabic-show-inactive-word-pills"
+                checked={arabicShowInactiveWordPills}
+                onCheckedChange={setArabicShowInactiveWordPills}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Global on/off for the dark ghost-pill layer behind every Arabic word.
+              When off, only the active word&rsquo;s colored highlight pill draws;
+              inactive words render as plain outlined text. The renderer honors
+              this toggle over any per-theme value, so it&rsquo;s the single source
+              of truth at burn time.
+            </p>
           </div>
         </div>
 
